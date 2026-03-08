@@ -1,0 +1,5 @@
+node_modules/
+.env
+
+# Ignore uploaded images so they aren't tracked
+uploads/
