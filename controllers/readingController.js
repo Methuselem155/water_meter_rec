@@ -12,6 +12,64 @@ const getBillingPeriod = () => {
     return `${year}-${month}`;
 };
 
+
+
+// @route   GET /api/readings/:id
+// @desc    Get a single reading by its ID
+// @access  Private
+exports.getReadingById = async (req, res) => {
+    try {
+        const reading = await Reading.findById(req.params.id)
+            .populate({
+                path: 'meterId',
+                select: 'serialNumber status userId',
+                populate: {
+                    path: 'userId',
+                    select: 'accountNumber fullName phoneNumber'
+                }
+            });
+
+        if (!reading) {
+            return res.status(404).json({
+                success: false,
+                message: 'Reading not found',
+                errors: [`No reading found with id ${req.params.id}`]
+            });
+        }
+
+        // Ensure the reading belongs to the authenticated user's meter
+        if (reading.meterId.userId._id.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unauthorized access to reading',
+                errors: ['You do not have permission to view this specific reading']
+            });
+        }
+
+        // Try to find if a bill was generated for this reading
+        const bill = await Bill.findOne({ readingId: reading._id }).select('-__v');
+
+        res.json({
+            success: true,
+            data: {
+                reading,
+                bill: bill || null
+            }
+        });
+
+    } catch (err) {
+        console.error('Error in getReadingById:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Server Error retrieving reading',
+            errors: [err.message]
+        });
+    }
+};
+
+// @route   POST /api/readings/upload
+// @desc    Upload a meter reading image and trigger OCR processing
+// @access  Private
 exports.uploadReading = async (req, res) => {
     try {
         // Check if file was uploaded handled via multer
@@ -62,79 +120,45 @@ exports.uploadReading = async (req, res) => {
 
         const savedReading = await newReading.save();
 
-        // Trigger OCR job asynchronously without blocking the client.
-        // NOTE: For production, replace `setImmediate` with a proper job queue
-        // (e.g. BullMQ, RabbitMQ, AWS SQS) to guarantee delivery and handle retries.
-        setImmediate(() => {
-            runOcrJob(savedReading._id);
-        });
+        // Determine if client wants to await OCR processing
+        const awaitOcr = req.query.awaitOcr === 'true' || req.query.awaitOcr === true;
 
-        res.status(201).json({
-            success: true,
-            message: 'Reading uploaded successfully. Processing image in background.',
-            data: {
-                readingId: savedReading._id,
-            }
-        });
+        if (awaitOcr) {
+            // Await OCR job completion (runOcrJob returns a promise if we modify it accordingly)
+            await runOcrJob(savedReading._id);
+            // Fetch full reading with populated meter and user info
+            const fullReading = await Reading.findById(savedReading._id)
+                .populate({
+                    path: 'meterId',
+                    select: 'serialNumber status userId',
+                    populate: { path: 'userId', select: 'accountNumber fullName phoneNumber' }
+                });
+            return res.status(201).json({
+                success: true,
+                message: 'Reading uploaded and processed.',
+                data: { reading: fullReading }
+            });
+        } else {
+            // Trigger OCR job asynchronously without blocking the client.
+            // NOTE: For production, replace `setImmediate` with a proper job queue
+            // (e.g. BullMQ, RabbitMQ, AWS SQS) to guarantee delivery and handle retries.
+            setImmediate(() => {
+                runOcrJob(savedReading._id);
+            });
 
+            return res.status(201).json({
+                success: true,
+                message: 'Reading uploaded successfully. Processing image in background.',
+                data: {
+                    readingId: savedReading._id,
+                }
+            });
+        }
     } catch (err) {
         console.error('Error in uploadReading:', err);
         res.status(500).json({
             success: false,
             message: 'Server Error handling upload',
-            errors: [err.message]
-        });
-    }
-};
-
-// @route   GET /api/readings/:id
-// @desc    Get a single reading by its ID
-// @access  Private
-exports.getReadingById = async (req, res) => {
-    try {
-        const reading = await Reading.findById(req.params.id)
-            .populate({
-                path: 'meterId',
-                select: 'serialNumber status userId',
-                populate: {
-                    path: 'userId',
-                    select: 'accountNumber fullName phoneNumber'
-                }
-            });
-
-        if (!reading) {
-            return res.status(404).json({
-                success: false,
-                message: 'Reading not found',
-                errors: [`No reading found with id ${req.params.id}`]
-            });
-        }
-
-        // Ensure the reading belongs to the authenticated user's meter
-        if (reading.meterId.userId._id.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized access to reading',
-                errors: ['You do not have permission to view this specific reading']
-            });
-        }
-
-        // Try to find if a bill was generated for this reading
-        const bill = await Bill.findOne({ readingId: reading._id }).select('-__v');
-
-        res.json({
-            success: true,
-            data: {
-                reading,
-                bill: bill || null
-            }
-        });
-
-    } catch (err) {
-        console.error('Error in getReadingById:', err);
-        res.status(500).json({
-            success: false,
-            message: 'Server Error retrieving reading',
             errors: [err.message]
         });
     }

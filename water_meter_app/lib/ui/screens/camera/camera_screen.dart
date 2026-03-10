@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../../providers/camera_provider.dart';
-import 'dart:io';
 import 'confirmation_screen.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
