@@ -6,6 +6,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const errorHandler = require('./middleware/errorHandler');
+const { terminateWorker } = require('./services/ocrService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +62,28 @@ app.get('/', (req, res) => {
 app.use(errorHandler);
 
 // Start the server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// Graceful shutdown handler
+const gracefulShutdown = async () => {
+  console.log('\nGracefully shutting down...');
+  
+  // Close server
+  server.close(async () => {
+    console.log('HTTP server closed');
+    
+    // Cleanup Tesseract workers
+    await terminateWorker();
+    
+    // Close MongoDB connection
+    await mongoose.disconnect();
+    console.log('MongoDB connection closed');
+    
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);

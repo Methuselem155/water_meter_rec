@@ -1,16 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'
-    show
-        kIsWeb; // To prevent file loads crashing the flutter web browser render
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:workmanager/workmanager.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../data/local/pending_reading.dart';
 import '../../../data/local/local_storage_service.dart';
 import '../../../services/api_service.dart';
 import '../../../workers/sync_worker.dart';
+import '../../../core/background_service_provider.dart';
+import '../../../core/file_service_provider.dart';
+import '../../widgets/platform_image.dart';
 import 'package:uuid/uuid.dart'; // To generate sync id
 
 class ConfirmationScreen extends ConsumerWidget {
@@ -34,9 +33,16 @@ class ConfirmationScreen extends ConsumerWidget {
       if (user == null) throw Exception("User session completely lost");
 
       // Verify immediate internet reachability
-      final connectivity = Connectivity();
-      final connectivityResult = await connectivity.checkConnectivity();
-      final hasInternet = !connectivityResult.contains(ConnectivityResult.none);
+      bool hasInternet;
+      if (kIsWeb) {
+        // On web, assume connectivity is managed by the browser; treat as online
+        // and let the HTTP call itself determine reachability.
+        hasInternet = true;
+      } else {
+        final connectivity = Connectivity();
+        final connectivityResult = await connectivity.checkConnectivity();
+        hasInternet = connectivityResult != ConnectivityResult.none;
+      }
 
       final reading = PendingReading(
         id: const Uuid().v4(),
@@ -49,19 +55,29 @@ class ConfirmationScreen extends ConsumerWidget {
 
       if (hasInternet) {
         // Attempt Direct Execution Over The Web
-        final success = await apiService.uploadReading(reading);
+        final responseData = await apiService.uploadReading(reading, awaitOcr: true);
 
-        if (success) {
-          File(
+        if (responseData != null) {
+          fileService.deleteFile(
             imagePath,
-          ).deleteSync(); // Dump temp cache immediately if synced successfully
+          ); // Safely handle file deletion per platform
 
           if (!context.mounted) return;
+          
           Navigator.pop(context); // Pop spinning loader
+          
+          final data = responseData['data'] as Map<String, dynamic>?;
+          final currentReading = data?['reading'] as Map<String, dynamic>?;
+          final readingValue = currentReading?['readingValue'];
+          final extractedText = readingValue != null ? readingValue.toString() : 'Could not extract digits';
+
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Reading successfully uploaded and processed!'),
+             SnackBar(
+              content: Text(
+                'Reading uploaded! Extracted value: $extractedText',
+              ),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 8),
             ),
           );
           Navigator.pop(context); // Pop back to hardware capture
@@ -75,11 +91,10 @@ class ConfirmationScreen extends ConsumerWidget {
       // Persist permanently in Hive Queue bounds
       await storageService.savePendingReading(reading);
 
-      // Signal Android OS (WorkManager) that there's a background hook waiting execution when cell reception restores
-      Workmanager().registerOneOffTask(
+      // Signal background sync (conditional under the hood)
+      backgroundService.registerOneOffTask(
         "bg_sync_${reading.id}",
         backgroundSyncTask,
-        constraints: Constraints(networkType: NetworkType.connected),
       );
 
       if (!context.mounted) return;
@@ -125,18 +140,7 @@ class ConfirmationScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(16.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: kIsWeb
-                      ? const Center(
-                          child: Text(
-                            'Camera capture preview explicitly unavailable for Web Emulators in io packages',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        )
-                      : Image.file(
-                          File(imagePath),
-                          fit: BoxFit
-                              .contain, // Fit fully within the view ensuring no crop
-                        ),
+                  child: PlatformImage(path: imagePath, fit: BoxFit.contain),
                 ),
               ),
             ),
@@ -152,7 +156,6 @@ class ConfirmationScreen extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  // Retake Button
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context),
@@ -165,7 +168,6 @@ class ConfirmationScreen extends ConsumerWidget {
 
                   const SizedBox(width: 16),
 
-                  // Specific Upload Hook
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => _uploadReading(context, ref),

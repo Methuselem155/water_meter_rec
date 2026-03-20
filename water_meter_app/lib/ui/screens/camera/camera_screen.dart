@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
 import '../../../providers/camera_provider.dart';
 import 'confirmation_screen.dart';
@@ -20,7 +21,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _requestPermissions();
+    if (kIsWeb) {
+      setState(() => _isPermissionGranted = true);
+      ref.read(cameraProvider.notifier).initialize();
+    } else {
+      _requestPermissions();
+    }
   }
 
   @override
@@ -39,7 +45,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     }
 
     if (state == AppLifecycleState.inactive) {
-      cameraController.dispose();
+      // On web, we might not want to dispose immediately or it might behave differently
+      if (!kIsWeb) {
+        cameraController.dispose();
+      }
     } else if (state == AppLifecycleState.resumed) {
       if (_isPermissionGranted) {
         ref.read(cameraProvider.notifier).initialize();

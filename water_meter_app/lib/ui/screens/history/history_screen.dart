@@ -129,11 +129,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           }
 
           final reading = state.readings[index];
+          final num? displayValue = reading.readingValue ??
+              _extractDigitsFromText(reading.extracted);
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
               leading: _getValidationIcon(reading.validationStatus),
-              title: Text('Reading @ ${reading.readingValue ?? 'Pending OCR'}'),
+              title: Text(
+                displayValue != null
+                    ? 'Reading @ $displayValue'
+                    : 'Reading @ Pending OCR',
+              ),
               subtitle: Text(_dateFormat.format(reading.submissionTime)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
@@ -229,5 +235,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       default:
         return const Icon(Icons.help_outline, color: Colors.grey);
     }
+  }
+
+  /// Fallback: try to pull a numeric reading from raw OCR text.
+  num? _extractDigitsFromText(String? text) {
+    if (text == null || text.isEmpty) return null;
+    final dense = text.replaceAll(RegExp(r'\s+'), '');
+    final match = RegExp(r'\d{3,}').firstMatch(dense);
+    if (match == null) return null;
+    return num.tryParse(match.group(0)!);
   }
 }

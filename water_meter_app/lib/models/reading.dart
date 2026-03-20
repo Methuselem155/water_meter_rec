@@ -5,6 +5,8 @@ class Reading extends Equatable {
   final String meterId;
   final String? imagePath;
   final String? serialNumberExtracted;
+  // Raw OCR text returned from backend (aliased as "extracted")
+  final String? extracted;
   final num? readingValue;
   final num? confidence;
   final String validationStatus;
@@ -16,6 +18,7 @@ class Reading extends Equatable {
     required this.meterId,
     this.imagePath,
     this.serialNumberExtracted,
+    this.extracted,
     this.readingValue,
     this.confidence,
     required this.validationStatus,
@@ -30,6 +33,7 @@ class Reading extends Equatable {
       meterId: json['meterId'] is Map ? (json['meterId']['_id'] ?? '') : (json['meterId'] ?? ''),
       imagePath: json['imagePath'],
       serialNumberExtracted: json['serialNumberExtracted'],
+      extracted: json['extracted'] ?? json['ocrRawText'],
       readingValue: json['readingValue'],
       confidence: json['confidence'],
       validationStatus: json['validationStatus'] ?? 'pending',
@@ -42,7 +46,7 @@ class Reading extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, meterId, imagePath, serialNumberExtracted, readingValue,
+        id, meterId, imagePath, serialNumberExtracted, extracted, readingValue,
         confidence, validationStatus, submissionTime, billingPeriod
       ];
 }

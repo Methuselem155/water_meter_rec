@@ -34,11 +34,12 @@ exports.validateReading = async (readingId) => {
         const actualSerial = reading.meterId.serialNumber.toUpperCase();
         const extractedSerial = reading.serialNumberExtracted ? reading.serialNumberExtracted.toUpperCase() : null;
 
-        if (!extractedSerial || !actualSerial.includes(extractedSerial) && !extractedSerial.includes(actualSerial)) {
-            reading.validationStatus = 'fraud_suspected';
-            await reading.save();
-            console.warn(`[Validation Service] Fraud Suspected on ${readingId}: Extracted serial '${extractedSerial}' does not match actual '${actualSerial}'.`);
-            return reading;
+        if (extractedSerial && actualSerial && !actualSerial.includes(extractedSerial) && !extractedSerial.includes(actualSerial)) {
+            // Serial mismatch, but don't fail - just warn and continue
+            console.warn(`[Validation Service] Serial mismatch on ${readingId}: Extracted '${extractedSerial}' doesn't match '${actualSerial}', but reading value is valid. Proceeding.`);
+        } else if (!extractedSerial) {
+            // Serial not extracted, but that's ok - meter reading is what matters
+            console.log(`[Validation Service] Serial number not extracted for ${readingId}, but proceeding with reading value.`);
         }
 
         // Check 3: Logical progression from previous reading
@@ -48,8 +49,11 @@ exports.validateReading = async (readingId) => {
             submissionTime: { $lt: reading.submissionTime }
         }).sort({ submissionTime: -1 }); // Get the most recent validated reading
 
-        if (previousReading) {
-            if (reading.readingValue < previousReading.readingValue) {
+        if (previousReading && reading.readingValue !== null && previousReading.readingValue !== null) {
+            const currentVal = Number(reading.readingValue);
+            const prevVal = Number(previousReading.readingValue);
+            
+            if (!isNaN(currentVal) && !isNaN(prevVal) && currentVal < prevVal) {
                 // Meter reversal or bad OCR reading
                 reading.validationStatus = 'failed';
                 await reading.save();

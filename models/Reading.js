@@ -12,7 +12,7 @@ const readingSchema = new mongoose.Schema({
         default: null
     },
     readingValue: {
-        type: Number,
+        type: String,
         default: null
     },
     serialNumberExtracted: {
@@ -21,6 +21,10 @@ const readingSchema = new mongoose.Schema({
     },
     confidence: {
         type: Number,
+        default: null
+    },
+    ocrRawText: {
+        type: String,
         default: null
     },
     validationStatus: {
