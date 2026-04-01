@@ -129,16 +129,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           }
 
           final reading = state.readings[index];
-          final num? displayValue = reading.readingValue ??
-              _extractDigitsFromText(reading.extracted);
+          // Use rawText to preserve leading zeros (e.g. 01009578 not 1009578)
+          final String? displayText = (reading.extracted != null && reading.extracted!.isNotEmpty)
+              ? reading.extracted
+              : reading.readingValue?.toString();
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
               leading: _getValidationIcon(reading.validationStatus),
               title: Text(
-                displayValue != null
-                    ? 'Reading @ $displayValue'
-                    : 'Reading @ Pending OCR',
+                displayText != null
+                    ? '$displayText m³'
+                    : 'Pending OCR',
               ),
               subtitle: Text(_dateFormat.format(reading.submissionTime)),
               trailing: const Icon(Icons.chevron_right),

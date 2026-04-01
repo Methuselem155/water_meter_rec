@@ -7,8 +7,8 @@ const Meter = require('../models/Meter');
 // @access  Private
 exports.getMyBills = async (req, res) => {
     try {
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 10;
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
         const startIndex = (page - 1) * limit;
 
         // 1. Find all meters belonging to the user
@@ -35,6 +35,10 @@ exports.getMyBills = async (req, res) => {
                     path: 'meterId',
                     select: 'serialNumber'
                 }
+            })
+            .populate({
+                path: 'previousReadingId',
+                select: 'readingValue submissionTime'
             })
             .sort({ generatedDate: -1 })
             .skip(startIndex)

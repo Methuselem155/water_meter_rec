@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\sympy\external\importtools.py
+# hypothesis_version: 6.151.10
+
+['(\\d+ | [a-z]+ | \\.)', '.', 'False', 'SYMPY_DEBUG', 'True', '__version__', 'collections', 'fromlist', 'matplotlib']

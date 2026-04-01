@@ -6,22 +6,49 @@ const billSchema = new mongoose.Schema({
         ref: 'Reading',
         unique: true,
         required: true,
-        index: true // Ensuring 1-to-1 relationships for billing to reading
+        index: true
+    },
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+        index: true
     },
     previousReadingId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Reading',
         default: null
     },
+    previousReadingValue: {
+        type: Number,
+        default: null
+    },
+    currentReadingValue: {
+        type: Number,
+        default: null
+    },
     consumption: {
-        type: Number, // Computed from readingValue - previousReadingValue
+        type: Number,
+        default: null
+    },
+    category: {
+        type: String,
+        enum: ['PUBLIC TAP', 'RESIDENTIAL', 'NON RESIDENTIAL', 'INDUSTRIES'],
         default: null
     },
     tariffBands: {
-        type: mongoose.Schema.Types.Mixed, // Track how calculation was broken down into tiers
+        type: mongoose.Schema.Types.Mixed,
         default: null
     },
     totalAmount: {
+        type: Number,
+        default: null
+    },
+    vatAmount: {
+        type: Number,
+        default: null
+    },
+    totalAmountVatInclusive: {
         type: Number,
         default: null
     },
@@ -34,7 +61,7 @@ const billSchema = new mongoose.Schema({
         type: String,
         enum: ['draft', 'final', 'paid'],
         default: 'draft',
-        index: true // Commonly queried to find 'unpaid' bills
+        index: true
     }
 });
 

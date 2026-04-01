@@ -3,6 +3,8 @@ const Meter = require('../models/Meter');
 const Bill = require('../models/Bill');
 const { runOcrJob } = require('../workers/ocrWorker');
 const ocrService = require('../services/ocrService');
+const validationService = require('../services/validationService');
+const billingService = require('../services/billingService');
 const path = require('path');
 
 // Helper to determine billing period (e.g. '2023-10')
@@ -46,29 +48,6 @@ exports.getReadingById = async (req, res) => {
                 message: 'Unauthorized access to reading',
                 errors: ['You do not have permission to view this specific reading']
             });
-        }
-
-        // If OCR previously failed or never populated, try a one-off re-run to permanently fix older records.
-        if (!reading.readingValue && reading.imagePath) {
-            try {
-                let absolutePath = reading.imagePath;
-                if (!path.isAbsolute(absolutePath)) {
-                    absolutePath = path.join(__dirname, '..', absolutePath);
-                }
-
-                console.log(`[GetReadingById] Re-running OCR for reading ${reading._id} from ${absolutePath}`);
-                const ocrResult = await ocrService.processImage(absolutePath);
-
-                reading.readingValue = ocrResult.readingValue;
-                reading.serialNumberExtracted = ocrResult.serialNumberExtracted;
-                reading.confidence = ocrResult.confidence;
-                reading.ocrRawText = ocrResult.rawText || null;
-
-                await reading.save();
-                console.log(`[GetReadingById] OCR re-run completed for reading ${reading._id}, value=${reading.readingValue}`);
-            } catch (reErr) {
-                console.error(`[GetReadingById] OCR re-run failed for reading ${reading._id}:`, reErr);
-            }
         }
 
         // Try to find if a bill was generated for this reading
@@ -137,30 +116,33 @@ exports.uploadReading = async (req, res) => {
 
         const meter = activeMeters[0];
         
-        // Store only the relative path from 'uploads' folder for proper HTTP serving
-        // Handle both Windows and Unix paths consistently
-        let imagePath = req.file.path;
-        
-        // Convert absolute path to relative
-        if (imagePath.includes('uploads')) {
-            const uploadsIndex = imagePath.toLowerCase().indexOf('uploads');
-            imagePath = imagePath.substring(uploadsIndex);
-        } else {
-            // If no uploads folder in path, just use filename
-            imagePath = path.basename(imagePath);
-        }
-        
-        // Normalize separators to forward slashes for consistency
-        imagePath = imagePath.replace(/\\/g, '/');
-        
-        console.log(`[Upload] Original absolute path: ${req.file.path}`);
-        console.log(`[Upload] Storing relative imagePath: ${imagePath}`);
+        // Store relative path from project root (e.g. OCR_test/filename.jpg)
+        const imagePath = 'OCR_test/' + path.basename(req.file.path);
+
+        console.log(`[Upload] Image stored in OCR_test: ${imagePath}`);
 
         // Create a new Reading document
+        // Validate manual readingValue if provided
+        let manualReadingValue = null;
+        let initialStatus = 'pending';
+        if (req.body.readingValue !== undefined && req.body.readingValue !== null && req.body.readingValue !== '') {
+            const parsed = Number(req.body.readingValue);
+            if (isNaN(parsed) || parsed < 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Validation failed',
+                    errors: ['readingValue must be a non-negative number']
+                });
+            }
+            manualReadingValue = parsed;
+            initialStatus = 'validated';
+        }
+
         const newReading = new Reading({
             meterId: meter._id,
             imagePath: imagePath,
-            validationStatus: 'pending',    // Set initially to pending pending OCR logic
+            readingValue: manualReadingValue,
+            validationStatus: initialStatus,
             submissionTime: new Date(),
             billingPeriod: getBillingPeriod()
         });
@@ -169,13 +151,15 @@ exports.uploadReading = async (req, res) => {
         console.log(`[Upload] Reading saved successfully with ID: ${savedReading._id}`);
         console.log(`[Upload] Reading data: meterId=${savedReading.meterId}, imagePath=${savedReading.imagePath}, validationStatus=${savedReading.validationStatus}`);
 
-        // Determine if client wants to await OCR processing
-        const awaitOcr = req.query.awaitOcr === 'true' || req.query.awaitOcr === true;
+        // Default: await OCR so mobile app gets the reading value immediately.
+        // Pass ?awaitOcr=false to opt into async background processing instead.
+        const awaitOcr = req.query.awaitOcr !== 'false';
 
         if (awaitOcr) {
             console.log(`[Upload] Attempting synchronous OCR for reading ${savedReading._id}`);
-            // Await OCR job completion (runOcrJob returns a promise if we modify it accordingly)
+
             await runOcrJob(savedReading._id);
+
             // Fetch full reading with populated meter and user info
             const fullReading = await Reading.findById(savedReading._id)
                 .populate({
@@ -189,6 +173,7 @@ exports.uploadReading = async (req, res) => {
                 success: true,
                 message: 'Reading uploaded and processed.',
                 data: {
+                    // Shape matches GET /api/readings so Flutter Reading.fromJson works identically
                     reading: {
                         ...fullReadingObj,
                         extracted: fullReadingObj.ocrRawText ?? null
@@ -197,6 +182,7 @@ exports.uploadReading = async (req, res) => {
             });
         } else {
             console.log(`[Upload] Triggering asynchronous OCR for reading ${savedReading._id}`);
+
             // Trigger OCR job asynchronously without blocking the client.
             // NOTE: For production, replace `setImmediate` with a proper job queue
             // (e.g. BullMQ, RabbitMQ, AWS SQS) to guarantee delivery and handle retries.
@@ -208,7 +194,7 @@ exports.uploadReading = async (req, res) => {
 
             return res.status(201).json({
                 success: true,
-                message: 'Reading uploaded successfully. Processing image in background.',
+                message: 'Reading uploaded. Processing image in background — poll GET /api/readings/:id for results.',
                 data: {
                     readingId: savedReading._id,
                 }
@@ -229,8 +215,8 @@ exports.uploadReading = async (req, res) => {
 // @access  Private
 exports.getMyReadings = async (req, res) => {
     try {
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 10;
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
         const startIndex = (page - 1) * limit;
 
         console.log(`[GetReadings] Fetching readings for user ${req.user.id}, page ${page}, limit ${limit}`);
@@ -285,6 +271,101 @@ exports.getMyReadings = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Server Error retrieving readings',
+            errors: [err.message]
+        });
+    }
+};
+
+// @route   POST /api/readings/scan
+// @desc    Receive two pre-cropped images (display + serial) and run focused OCR on each.
+//          Creates and validates a reading in one shot. Much more accurate than full-image OCR.
+// @access  Private
+exports.scanReading = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Expect two files: 'display' (digit crop) and 'serial' (serial number crop)
+        const displayFile = req.files?.display?.[0];
+        const serialFile  = req.files?.serial?.[0];
+
+        if (!displayFile) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: ['display crop image is required']
+            });
+        }
+
+        // Find user's active meter
+        const activeMeters = await Meter.find({ userId, status: 'active' });
+        if (activeMeters.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No active meter found',
+                errors: ['User does not have an active meter registration.']
+            });
+        }
+        const meter = activeMeters[0];
+
+        // Run OCR on the display crop — digits only
+        const displayPath = displayFile.path;
+        console.log(`[Scan] Running OCR on display crop: ${displayPath}`);
+        const displayResult = await ocrService.processImage(displayPath, 'display');
+
+        // Run OCR on serial crop if provided
+        let serialResult = { serialNumberExtracted: null };
+        if (serialFile) {
+            console.log(`[Scan] Running OCR on serial crop: ${serialFile.path}`);
+            serialResult = await ocrService.processImage(serialFile.path, 'serial');
+        }
+        console.log(`[Scan] display OCR: value=${displayResult.readingValue} conf=${displayResult.confidence}`);
+        console.log(`[Scan] serial OCR: serial=${serialResult.serialNumberExtracted}`);
+
+        // Store the display image as the reading image (in OCR_test/)
+        const imagePath = 'OCR_test/' + path.basename(displayFile.path);
+
+        // Create reading
+        const newReading = new Reading({
+            meterId: meter._id,
+            imagePath,
+            readingValue: displayResult.readingValue,
+            serialNumberExtracted: serialResult.serialNumberExtracted,
+            confidence: displayResult.confidence,
+            ocrRawText: displayResult.rawText || null,
+            ocrMethod: 'easyocr-crop',
+            validationStatus: 'pending',
+            submissionTime: new Date(),
+            billingPeriod: getBillingPeriod()
+        });
+        await newReading.save();
+
+        // Run validation + billing
+        const validated = await validationService.validateReading(newReading._id);
+        if (validated.validationStatus === 'validated') {
+            await billingService.generateBill(newReading._id);
+        }
+
+        // Return full reading
+        const fullReading = await Reading.findById(newReading._id).populate({
+            path: 'meterId',
+            select: 'serialNumber status userId',
+            populate: { path: 'userId', select: 'accountNumber fullName phoneNumber' }
+        });
+
+        const obj = fullReading.toObject();
+        return res.status(201).json({
+            success: true,
+            message: 'Reading scanned and processed.',
+            data: {
+                reading: { ...obj, extracted: obj.ocrRawText ?? null }
+            }
+        });
+
+    } catch (err) {
+        console.error('Error in scanReading:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Server Error processing scan',
             errors: [err.message]
         });
     }

@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\torch\_functorch\_aot_autograd\input_output_analysis.py
+# hypothesis_version: 6.151.10
+
+[400, 'name', 'output', 'placeholder']

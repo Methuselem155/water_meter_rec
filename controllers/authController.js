@@ -18,7 +18,7 @@ exports.register = async (req, res) => {
         });
     }
 
-    const { accountNumber, fullName, phoneNumber, password, meterSerialNumber, email } = req.body;
+    const { accountNumber, fullName, phoneNumber, password, meterSerialNumber, email, category } = req.body;
 
     try {
         // Check if user already exists
@@ -51,6 +51,7 @@ exports.register = async (req, res) => {
             fullName,
             phoneNumber,
             email: email || null,
+            category: category || 'RESIDENTIAL',
             passwordHash
         });
 
@@ -72,9 +73,11 @@ exports.register = async (req, res) => {
         };
 
         // Sign JWT
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!jwtSecret) throw new Error('JWT_SECRET is not configured');
         jwt.sign(
             payload,
-            process.env.JWT_SECRET || 'your_jwt_secret_here',
+            jwtSecret,
             { expiresIn: process.env.JWT_EXPIRE || '7d' }, // typically expires in 7 days
             (err, token) => {
                 if (err) throw err;
@@ -87,7 +90,8 @@ exports.register = async (req, res) => {
                             id: user.id,
                             accountNumber: user.accountNumber,
                             fullName: user.fullName,
-                            phoneNumber: user.phoneNumber
+                            phoneNumber: user.phoneNumber,
+                            category: user.category
                         }
                     }
                 });
@@ -153,9 +157,11 @@ exports.login = async (req, res) => {
         };
 
         // Sign JWT
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!jwtSecret) throw new Error('JWT_SECRET is not configured');
         jwt.sign(
             payload,
-            process.env.JWT_SECRET || 'your_jwt_secret_here',
+            jwtSecret,
             { expiresIn: process.env.JWT_EXPIRE || '7d' },
             (err, token) => {
                 if (err) throw err;
@@ -168,7 +174,8 @@ exports.login = async (req, res) => {
                             id: user.id,
                             accountNumber: user.accountNumber,
                             fullName: user.fullName,
-                            phoneNumber: user.phoneNumber
+                            phoneNumber: user.phoneNumber,
+                            category: user.category
                         }
                     }
                 });
@@ -205,7 +212,8 @@ exports.getMe = async (req, res) => {
                     accountNumber: user.accountNumber,
                     fullName: user.fullName,
                     phoneNumber: user.phoneNumber,
-                    email: user.email
+                    email: user.email,
+                    category: user.category
                 }
             }
         });

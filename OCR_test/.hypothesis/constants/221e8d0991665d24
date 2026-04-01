@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\io\sift.py
+# hypothesis_version: 6.151.10
+
+['SIFT', 'SURF', 'column', 'data', 'load_sift', 'load_surf', 'orientation', 'row', 'scale', 'second_moment', 'sign']

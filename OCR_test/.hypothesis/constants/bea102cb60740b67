@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\imageio\v3.py
+# hypothesis_version: 6.151.10
+
+['exclude_applied', 'extension', 'format_hint', 'imiter', 'immeta', 'imopen', 'improps', 'imread', 'imwrite', 'index', 'legacy_mode', 'plugin', 'r', 'w']

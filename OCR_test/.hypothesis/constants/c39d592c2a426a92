@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\bidi\__init__.py
+# hypothesis_version: 6.151.10
+
+['--base-dir', '--debug', '--encoding', '--rust', '--upper-is-rtl', '--version', '-b', '-d', '-e', '-r', '-u', '-v', '.', 'L', 'R', '__main__', 'base_dir', 'debug', 'encoding', 'get_base_level', 'get_display', 'store_true', 'upper_is_rtl', 'use_rust', 'utf-8', 'version']

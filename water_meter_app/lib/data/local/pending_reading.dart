@@ -25,6 +25,12 @@ class PendingReading extends HiveObject {
   @HiveField(6)
   int retryCount;
 
+  @HiveField(7)
+  String? readingValue;
+
+  @HiveField(8)
+  String? extractedText;
+
   PendingReading({
     required this.id,
     required this.imagePath,
@@ -33,5 +39,7 @@ class PendingReading extends HiveObject {
     required this.userId,
     this.status = 'pending',
     this.retryCount = 0,
+    this.readingValue,
+    this.extractedText,
   });
 }

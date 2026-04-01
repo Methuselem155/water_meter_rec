@@ -1,0 +1,3 @@
+=== Meter OCR Results ===
+Image  : OCR_test/69c9cc21f700bcef16bf3d69-1774832808283-708502270.jpg
+Reading: 01001397

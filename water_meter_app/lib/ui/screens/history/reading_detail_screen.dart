@@ -5,23 +5,30 @@ import '../../../repositories/reading_repository.dart';
 import '../../../models/reading.dart';
 import '../../../core/constants.dart';
 
-class ReadingDetailScreen extends ConsumerWidget {
+class ReadingDetailScreen extends ConsumerStatefulWidget {
   final String readingId;
 
   const ReadingDetailScreen({super.key, required this.readingId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // We intentionally fetch live details on navigating instead of passing full model
-    // To grab any newly populated metadata (like OCR status updating server side)
-    final readingFuture = ref
-        .read(readingRepositoryProvider)
-        .getReadingById(readingId);
+  ConsumerState<ReadingDetailScreen> createState() => _ReadingDetailScreenState();
+}
 
+class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
+  late Future<Reading> _readingFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _readingFuture = ref.read(readingRepositoryProvider).getReadingById(widget.readingId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Reading Details')),
       body: FutureBuilder<Reading>(
-        future: readingFuture,
+        future: _readingFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -29,16 +36,39 @@ class ReadingDetailScreen extends ConsumerWidget {
 
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                'Failed to load reading: ${snapshot.error}',
-                style: const TextStyle(color: Colors.red),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Failed to load reading: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => setState(() {
+                        _readingFuture = ref
+                            .read(readingRepositoryProvider)
+                            .getReadingById(widget.readingId);
+                      }),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
 
           final reading = snapshot.data!;
-          final num? displayValue = reading.readingValue ??
-              _extractDigitsFromText(reading.extracted);
+          // Use rawText (exact OCR string) to preserve leading zeros
+          // Fall back to readingValue if rawText not available
+          final String? displayText = (reading.extracted != null && reading.extracted!.isNotEmpty)
+              ? reading.extracted
+              : reading.readingValue?.toString();
           final dateFormat = DateFormat('MMMM dd, yyyy - HH:mm');
 
           return SingleChildScrollView(
@@ -53,8 +83,8 @@ class ReadingDetailScreen extends ConsumerWidget {
                     child: Column(
                       children: [
                         Text(
-                          displayValue != null
-                              ? '$displayValue Units'
+                          displayText != null
+                              ? '$displayText m³'
                               : 'Processing OCR...',
                           style: Theme.of(context).textTheme.headlineMedium
                               ?.copyWith(

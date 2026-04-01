@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../../../providers/camera_provider.dart';
 import 'confirmation_screen.dart';
 
@@ -38,20 +39,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   // Handle App Lifecycle pausing to tear down camera memory
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final cameraController = ref.read(cameraProvider).controller;
+    final cameraNotifier = ref.read(cameraProvider.notifier);
+    final cameraState = ref.read(cameraProvider);
 
-    if (cameraController == null || !cameraController.value.isInitialized) {
+    // Check if controller exists and is initialized
+    if (cameraState.controller == null ||
+        !cameraState.controller!.value.isInitialized) {
       return;
     }
 
     if (state == AppLifecycleState.inactive) {
-      // On web, we might not want to dispose immediately or it might behave differently
+      // On inactive, dispose the controller properly
       if (!kIsWeb) {
-        cameraController.dispose();
+        cameraNotifier.dispose(); // Use proper dispose method
       }
     } else if (state == AppLifecycleState.resumed) {
-      if (_isPermissionGranted) {
-        ref.read(cameraProvider.notifier).initialize();
+      // On resume, reinitialize if needed
+      if (_isPermissionGranted && cameraState.isDisposed) {
+        cameraNotifier.reinitialize();
       }
     }
   }
@@ -74,6 +79,33 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     }
   }
 
+  /// Opens the native crop UI and returns the cropped file path,
+  /// or null if the user cancelled.
+  Future<String?> _cropImage(String rawPath) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: rawPath,
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 90,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Meter Region',
+          toolbarColor: Colors.black,
+          toolbarWidgetColor: Colors.white,
+          activeControlsWidgetColor: Colors.greenAccent,
+          initAspectRatio: CropAspectRatioPreset.ratio3x2,
+          lockAspectRatio: false,
+          hideBottomControls: false,
+        ),
+        IOSUiSettings(
+          title: 'Crop Meter Region',
+          cancelButtonTitle: 'Retake',
+          doneButtonTitle: 'Done',
+        ),
+      ],
+    );
+    return cropped?.path;
+  }
+
   Future<void> _takePicture() async {
     final cameraState = ref.read(cameraProvider);
     final controller = cameraState.controller;
@@ -85,24 +117,28 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     }
 
     try {
-      // Instruct hardware to capture
+      // Capture raw photo from hardware
       final XFile image = await controller.takePicture();
-
-      // Bypassing path_provider getTemporaryDirectory() to avoid MissingPluginException
-      // during rapid local development/testing cycles where native linking might be stale.
-      // We use the image.path provided by the camera plugin directly.
-      final String imagePath = image.path;
+      final String rawPath = image.path;
 
       if (!mounted) return;
 
-      // Record locally in state
-      ref.read(cameraProvider.notifier).setCapturedImage(imagePath);
+      // Show crop UI — user selects the meter digit region
+      final String? croppedPath = kIsWeb ? rawPath : await _cropImage(rawPath);
+
+      // User cancelled cropping — stay on camera screen
+      if (croppedPath == null) return;
+
+      if (!mounted) return;
+
+      // Record the final (cropped) path in state
+      ref.read(cameraProvider.notifier).setCapturedImage(croppedPath);
 
       // Navigate toward confirmation layer
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ConfirmationScreen(imagePath: imagePath),
+          builder: (context) => ConfirmationScreen(imagePath: croppedPath),
         ),
       );
     } catch (e) {
@@ -133,7 +169,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       );
     }
 
-    if (!cameraState.isInitialized || cameraState.controller == null) {
+    // Check if controller is not initialized, disposed, or null
+    if (!cameraState.isInitialized ||
+        cameraState.controller == null ||
+        cameraState.isDisposed ||
+        !cameraState.controller!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -222,8 +262,8 @@ class MeterOverlayPainter extends CustomPainter {
         size.width / 2,
         size.height * 0.4,
       ), // slightly above center
-      width: size.width * 0.8,
-      height: 100,
+      width: size.width * 0.70,
+      height: 65,
     );
 
     // Box 2: Serial Number Pattern

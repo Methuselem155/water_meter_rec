@@ -21,6 +21,17 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    category: {
+        type: String,
+        enum: ['PUBLIC TAP', 'RESIDENTIAL', 'NON RESIDENTIAL', 'INDUSTRIES'],
+        required: true,
+        default: 'RESIDENTIAL'
+    },
+    role: {
+        type: String,
+        enum: ['user', 'admin'],
+        default: 'user'
+    },
     passwordHash: {
         type: String,
         required: true

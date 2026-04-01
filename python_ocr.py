@@ -1,173 +1,176 @@
-import sys
-import json
-import re
-import os
-from typing import Optional, Tuple
-from pathlib import Path
-
+"""
+Water meter OCR — wires OCR_test/meter_extractor.py to the backend.
+Usage: python python_ocr.py <image_path> [--mode auto|display|serial]
+"""
+import sys, json, re, argparse, os
 import cv2
-import pytesseract
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
-def preprocess_image_for_digits(img: Image.Image) -> Image.Image:
-    """Preprocess image to enhance digit visibility using OpenCV."""
-    # Convert PIL to cv2
-    img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    
-    # Resize up
-    gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    
-    # Blur and threshold
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-    
-    # Morphological closing
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-    
-    # Convert back to PIL
-    return Image.fromarray(closed)
+# Add OCR_test to path — do NOT modify anything inside OCR_test
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'OCR_test'))
 
-def preprocess_image_for_ocr(img: Image.Image) -> Image.Image:
-    """Preprocess image for improved OCR accuracy using OpenCV."""
-    img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    
-    # Resize up
-    gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    
-    # Adjust contrast using CLAHE
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    cl1 = clahe.apply(gray)
-    
-    # Denoise
-    denoised = cv2.medianBlur(cl1, 3)
-    
-    return Image.fromarray(denoised)
+from meter_extractor import extract_meter_reading
+from ocr_extractor import OCREngine
+
+_engine = None
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = OCREngine(languages=['en'])
+    return _engine
 
 
-def extract_digits_with_confidence(img: Image.Image) -> Tuple[Optional[str], float]:
-    """Extract digits using optimized Tesseract configuration."""
-    # Extract digits with improved PSM for meter screens
-    config = r'--psm 11 -c tessedit_char_whitelist=0123456789'
-    
-    data = pytesseract.image_to_data(img, config=config, output_type=pytesseract.Output.DICT)
-    
-    # Extract text and confidence
-    texts = data['text']
-    confidences = [float(c) if str(c).replace('.','',1).isdigit() else 0.0 for c in data['conf']]
-    valid_entries = [(text, conf) for text, conf in zip(texts, confidences) 
-                     if text.strip() and conf > 0]
-    
-    if not valid_entries:
-        return None, 0.0
-    
-    
-    # Concatenate all detected digits
-    all_digits = ''.join([text for text, _ in valid_entries])
-    avg_confidence = np.mean([conf for _, conf in valid_entries]) / 100.0 if valid_entries else 0.0
-    
-    # Try to extract the meter reading (usually longest sequence)
-    digit_matches = re.findall(r'\d{3,}', all_digits)
-    
-    if digit_matches:
-        digit_matches.sort(key=len, reverse=True)
-        # Return exactly the matched string to preserve leading zeros
-        reading = digit_matches[0]
-        return reading, min(avg_confidence, 1.0)
-    
-    return None, min(avg_confidence, 1.0)
+def load_image(path):
+    pil = ImageOps.exif_transpose(Image.open(path))
+    return cv2.cvtColor(np.array(pil.convert('RGB')), cv2.COLOR_RGB2BGR)
 
 
-def extract_data_from_text(text: str) -> dict:
-    reading_value: Optional[str] = None
-    serial_extracted: Optional[str] = None
+def ocr_display(image_path):
+    """
+    Extract meter reading from a pre-cropped display image.
+    Calls extract_meter_reading() from meter_extractor.py exactly as-is.
+    Returns the digit string directly — no modification.
+    """
+    try:
+        # meter_extractor.py runs from OCR_test/ directory
+        # It needs just the filename if the image is in OCR_test/
+        ocr_test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'OCR_test')
+        abs_path = os.path.abspath(image_path)
 
-    cleaned = re.sub(r"[\r\n]+", " ", text or "").strip()
-    cleaned = re.sub(r"\s+", " ", cleaned)
-    dense = re.sub(r"\s+", "", cleaned)
+        if abs_path.startswith(os.path.abspath(ocr_test_dir) + os.sep):
+            # Image is inside OCR_test/ — pass just the filename
+            lookup_path = os.path.basename(abs_path)
+        else:
+            # Image is elsewhere — pass full absolute path
+            lookup_path = abs_path
 
-    # Extract digits: prefer longer sequences but allow any 3+ digits
-    matches = re.findall(r"\d{6,10}", dense)
-    if not matches:
-        matches = re.findall(r"\d{4,10}", dense)
-    if not matches:
-        matches = re.findall(r"\d{3,}", dense)
+        null_path = 'nul' if os.name == 'nt' else '/dev/null'
 
-    if matches:
-        matches.sort(key=len, reverse=True)
-        reading_value = matches[0]
+        # meter_extractor must be run with OCR_test as cwd
+        import subprocess, sys
+        proc = subprocess.run(
+            [sys.executable, 'meter_extractor.py', '--image', lookup_path,
+             '--output', null_path],
+            capture_output=True, text=True,
+            cwd=ocr_test_dir
+        )
+        # Parse "Final answer: XXXXXXXX" from stdout
+        reading = ''
+        for line in proc.stdout.splitlines():
+            if line.startswith('Final answer:'):
+                reading = line.split(':', 1)[1].strip()
+                break
+        if not reading:
+            # fallback: parse READING line
+            for line in proc.stdout.splitlines():
+                if 'READING:' in line:
+                    reading = line.split('READING:', 1)[1].strip()
+                    break
+    except Exception as e:
+        return {
+            'readingValue': None,
+            'serialNumberExtracted': None,
+            'confidence': 0.0,
+            'rawText': '',
+            'ocrEngine': 'easyocr',
+            'success': False,
+        }
 
-    # Serial: 11 mixed chars and digits preferred, but not mandatory
-    serial_match = re.search(r"\b[A-Z0-9]{11}\b", cleaned, re.IGNORECASE)
-    if not serial_match:
-        serial_match = re.search(r"[A-Z0-9]{11}", dense, re.IGNORECASE)
-    if not serial_match:
-        serial_match = re.search(r"[A-Z0-9]{6,}", cleaned, re.IGNORECASE)
+    # reading is the raw string e.g. "01009578"
+    raw_text = re.sub(r'[^0-9?]', '', reading)  # keep digits and ? markers
+    clean_text = raw_text.replace('?', '')       # digits only for readingValue
 
-    if serial_match:
-        serial_extracted = serial_match.group(0).upper()
+    reading_value = None
+    try:
+        if clean_text:
+            reading_value = int(clean_text)
+    except ValueError:
+        pass
 
     return {
-        "readingValue": reading_value,
-        "serialNumberExtracted": serial_extracted,
+        'readingValue': reading_value,
+        'serialNumberExtracted': None,
+        'confidence': 0.8 if '?' not in raw_text else 0.4,
+        'rawText': raw_text,   # exact string from meter_extractor (e.g. "01009578")
+        'ocrEngine': 'easyocr',
+        'success': bool(clean_text and '?' not in raw_text),
     }
 
 
-def save_debug_image(img: Image.Image, path: str) -> None:
-    """Save preprocessed image for debugging."""
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    img.save(path)
+def ocr_serial(image_path):
+    """Extract serial number from a pre-cropped serial image."""
+    img = load_image(image_path)
+    results = get_engine().extract(img)
+    serial = None
+    for _, text, conf in results:
+        cleaned = text.upper().strip().replace('(', 'I').replace('*', '').replace(' ', '')
+        for m in re.findall(r'[A-Z0-9]{6,13}', cleaned):
+            if re.search(r'[A-Z]', m) and len(re.findall(r'\d', m)) >= 3:
+                if len(m) > 8 and m[-1].isalpha() and m[-2].isdigit():
+                    m = m[:-1]
+                serial = m
+                break
+        if serial:
+            break
+    return {
+        'readingValue': None,
+        'serialNumberExtracted': serial,
+        'confidence': 1.0 if serial else 0.0,
+        'rawText': serial or '',
+        'ocrEngine': 'easyocr',
+        'success': bool(serial),
+    }
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Missing image path"}))
-        sys.exit(1)
+def ocr_auto(image_path):
+    """Full image: use meter_extractor for reading, ocr_extractor for serial."""
+    display_result = ocr_display(image_path)
+    img = load_image(image_path)
+    h = img.shape[0]
+    # Serial from bottom 40%
+    bottom = img[int(h * 0.60):, :]
+    serial_result = ocr_serial.__wrapped__(bottom) if hasattr(ocr_serial, '__wrapped__') else None
 
-    image_path = sys.argv[1]
-    debug_mode = len(sys.argv) > 2 and sys.argv[2] == "--debug"
+    # Try serial from full image
+    results = get_engine().extract(img)
+    serial = None
+    for _, text, conf in results:
+        cleaned = text.upper().strip().replace('(', 'I').replace('*', '').replace(' ', '')
+        for m in re.findall(r'[A-Z0-9]{8,13}', cleaned):
+            if re.search(r'[A-Z]', m) and len(re.findall(r'\d', m)) >= 2:
+                serial = m; break
+        if serial: break
 
+    return {
+        'readingValue': display_result['readingValue'],
+        'serialNumberExtracted': serial,
+        'confidence': display_result['confidence'],
+        'rawText': display_result['rawText'],
+        'ocrEngine': 'easyocr',
+        'success': display_result['success'],
+    }
+
+
+def extract_reading(image_path, mode='auto'):
+    if mode == 'display': return ocr_display(image_path)
+    if mode == 'serial':  return ocr_serial(image_path)
+    return ocr_auto(image_path)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('image_path')
+    parser.add_argument('--mode', default='auto', choices=['auto', 'display', 'serial'])
+    args = parser.parse_args()
     try:
-        # Open original image
-        img = Image.open(image_path)
-        
-        # Preprocess for OCR
-        preprocessed_img = preprocess_image_for_ocr(img)
-        
-        # Run full OCR with standard config
-        raw_text = pytesseract.image_to_string(preprocessed_img)
-        
-        # Extract digits with confidence
-        digit_value, confidence = extract_digits_with_confidence(preprocessed_img)
-        
-        # Extract data from raw text
-        data = extract_data_from_text(raw_text)
-        
-        # Use digit extraction result if available, otherwise use regex extraction
-        final_reading = digit_value if digit_value is not None else data["readingValue"]
-        
-        # Save debug images if requested
-        if debug_mode:
-            base_name = Path(image_path).stem
-            save_debug_image(preprocessed_img, f"tmp/debug_preprocessed_{base_name}.png")
-            save_debug_image(preprocess_image_for_digits(img), 
-                           f"tmp/debug_digits_{base_name}.png")
-        
-        result = {
-            "readingValue": final_reading,
-            "serialNumberExtracted": data["serialNumberExtracted"],
-            "confidence": confidence,
-            "rawText": raw_text,
-        }
+        result = extract_reading(args.image_path, args.mode)
         print(json.dumps(result))
-    except Exception as exc:
-        print(json.dumps({"error": str(exc)}))
+    except Exception as e:
+        print(json.dumps({'error': str(e)}))
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
-

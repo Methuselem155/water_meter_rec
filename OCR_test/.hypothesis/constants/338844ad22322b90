@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\imageio\__init__.py
+# hypothesis_version: 6.151.10
+
+['config', 'formats', 'get_reader', 'get_writer', 'help', 'imageio', 'imiter', 'imopen', 'imread', 'imsave', 'imwrite', 'mimread', 'mimsave', 'mimwrite', 'mvolread', 'mvolsave', 'mvolwrite', 'plugins', 'read', 'save', 'show_formats', 'v2', 'v3', 'volread', 'volsave', 'volwrite']

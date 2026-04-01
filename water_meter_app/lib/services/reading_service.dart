@@ -7,19 +7,24 @@ class ReadingService {
 
   ReadingService(DioClient dioClient) : _dio = dioClient.dio;
 
-  Future<PaginatedReadings> fetchReadings({int page = 1, int limit = 10}) async {
+  Future<PaginatedReadings> fetchReadings({
+    int page = 1,
+    int limit = 10,
+  }) async {
     try {
       final response = await _dio.get(
         '/readings',
         queryParameters: {'page': page, 'limit': limit},
       );
-      
+
       if (response.statusCode == 200 && response.data['success'] == true) {
         return PaginatedReadings.fromJson(response.data);
       }
       throw Exception(response.data['message'] ?? 'Failed to fetch readings');
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     } catch (e) {
-      throw _handleError(e);
+      throw Exception('Error: ${e.toString()}');
     }
   }
 
@@ -30,20 +35,45 @@ class ReadingService {
         // Parse from nested data payload
         return Reading.fromJson(response.data['data']['reading']);
       }
-      throw Exception(response.data['message'] ?? 'Failed to load reading details');
+      throw Exception(
+        response.data['message'] ?? 'Failed to load reading details',
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     } catch (e) {
-       throw _handleError(e);
+      throw Exception('Error: ${e.toString()}');
     }
   }
 
-  Exception _handleError(dynamic e) {
-    if (e is DioException) {
-      if (e.response != null && e.response?.data != null) {
-        final message = e.response?.data['message'] ?? 'Server error';
-        return Exception(message);
-      }
-      return Exception('Network error: ${e.message}');
+  Exception _handleDioError(DioException e) {
+    if (e.response != null && e.response?.data != null) {
+      final message = e.response?.data['message'] ?? 'Server error';
+      return Exception(message);
     }
-    return Exception(e.toString());
+
+    String errorMsg;
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+        errorMsg = 'Connection timeout - server not responding';
+        break;
+      case DioExceptionType.receiveTimeout:
+        errorMsg = 'Response timeout - server took too long';
+        break;
+      case DioExceptionType.badResponse:
+        errorMsg = 'Server error: ${e.response?.statusCode}';
+        break;
+      case DioExceptionType.cancel:
+        errorMsg = 'Request cancelled';
+        break;
+      case DioExceptionType.connectionError:
+        errorMsg = 'No internet connection';
+        break;
+      case DioExceptionType.unknown:
+        errorMsg = e.message ?? 'Network error';
+        break;
+      default:
+        errorMsg = 'Network error';
+    }
+    return Exception(errorMsg);
   }
 }

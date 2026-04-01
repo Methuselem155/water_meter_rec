@@ -1,0 +1,4 @@
+# file: D:\OCR\ocr_extractor.py
+# hypothesis_version: 6.151.10
+
+[0.5, 1.0, 255, '\n=== OCR Results ===', '+', '--image', '--languages', '--output', '--resize', '--save-annotated', '--visualize', '.jpeg', '.jpg', '.png', '=== OCR Results ===\n', '===================\n', 'FACTOR', 'LANG', 'OCR Result', 'PATH', '\\d+', '__main__', '_annotated.png', 'en', 'ocr_extractor', 'results.txt', 'save_annotated', 'store_true', 'utf-8', 'w']

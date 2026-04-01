@@ -26,7 +26,8 @@ router.post(
         check('fullName', 'Full name is required').not().isEmpty(),
         check('phoneNumber', 'Phone number is required').not().isEmpty(),
         check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
-        check('meterSerialNumber', 'Meter serial number is required').not().isEmpty()
+        check('meterSerialNumber', 'Meter serial number is required').not().isEmpty(),
+        check('category', 'Customer category is required').isIn(['PUBLIC TAP', 'RESIDENTIAL', 'NON RESIDENTIAL', 'INDUSTRIES'])
     ],
     authController.register
 );

@@ -1,0 +1,9 @@
+easyocr>=1.7.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+hypothesis>=6.0.0
+pytest>=7.0.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0

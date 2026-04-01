@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\util\apply_parallel.py
+# hypothesis_version: 6.151.10
+
+[1.0, 'apply_parallel', 'edge', 'nearest', 'periodic', 'reflect', 'symmetric', 'wrap']

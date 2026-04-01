@@ -1,82 +1,104 @@
 const Reading = require('../models/Reading');
-const Meter = require('../models/Meter');
 const ocrService = require('../services/ocrService');
 const validationService = require('../services/validationService');
 const billingService = require('../services/billingService');
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
+const os = require('os');
 
 /**
- * Process a water meter reading image in the background.
- * Updates the associated Reading document with extracted results.
- * 
- * @param {ObjectId} readingId - The MongoDB ID of the reading to process
+ * Resolve imagePath to a local file path.
+ * If it's a Cloudinary/HTTP URL, download to a temp file first.
+ * Returns { localPath, isTemp }.
+ */
+const resolveImagePath = (imagePath) => {
+    return new Promise((resolve, reject) => {
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+            const ext = path.extname(new URL(imagePath).pathname) || '.jpg';
+            const tmpFile = path.join(os.tmpdir(), `ocr_${Date.now()}${ext}`);
+            const file = fs.createWriteStream(tmpFile);
+            const client = imagePath.startsWith('https://') ? https : http;
+            client.get(imagePath, (res) => {
+                res.pipe(file);
+                file.on('finish', () => file.close(() => resolve({ localPath: tmpFile, isTemp: true })));
+            }).on('error', (err) => {
+                fs.unlink(tmpFile, () => {});
+                reject(err);
+            });
+        } else {
+            const localPath = path.isAbsolute(imagePath)
+                ? imagePath
+                : path.join(__dirname, '..', imagePath);
+            resolve({ localPath, isTemp: false });
+        }
+    });
+};
+
+/**
+ * Run OCR on a reading, then validate and bill if successful.
+ * @param {ObjectId} readingId
  */
 const runOcrJob = async (readingId) => {
-    console.log(`[OCR Worker] Starting job for reading ID: ${readingId}`);
+    console.log(`[OCR Worker] Starting job for reading: ${readingId}`);
+
+    let absolutePath = null;
+    let isTemp = false;
 
     try {
-        // 1. Retrieve the reading from DB
         const reading = await Reading.findById(readingId).populate('meterId');
         if (!reading) {
-            console.error(`[OCR Worker] Reading ${readingId} not found in DB.`);
+            console.error(`[OCR Worker] Reading ${readingId} not found`);
             return;
         }
 
         if (reading.validationStatus !== 'pending') {
-            console.log(`[OCR Worker] Reading ${readingId} is not in pending state. Skipping.`);
+            console.log(`[OCR Worker] Reading ${readingId} already processed (${reading.validationStatus}), skipping`);
             return;
         }
 
-        // 2. Process image using our service
         if (!reading.imagePath) {
-            throw new Error('Reading does not contain a valid imagePath');
+            throw new Error('Reading has no imagePath');
         }
 
-        // Convert relative path to absolute if needed
-        let absolutePath = reading.imagePath;
-        if (!path.isAbsolute(absolutePath)) {
-            absolutePath = path.join(__dirname, '..', absolutePath);
-        }
+        // Resolve to local path (download from Cloudinary if needed)
+        const resolved = await resolveImagePath(reading.imagePath);
+        absolutePath = resolved.localPath;
+        isTemp = resolved.isTemp;
 
+        console.log(`[OCR Worker] Running OCR on: ${absolutePath}`);
         const ocrResult = await ocrService.processImage(absolutePath);
-        const confidencePct = (typeof ocrResult.confidence === 'number')
-            ? `${(ocrResult.confidence * 100).toFixed(2)}%`
-            : 'N/A';
-        console.log(`[OCR Worker] OCR Success for ${readingId}. Extracted Value: ${ocrResult.readingValue}, Serial: ${ocrResult.serialNumberExtracted}, Confidence: ${confidencePct}`);
 
-        // 3. Update the reading document with values
+        console.log(`[OCR Worker] OCR done — value=${ocrResult.readingValue} serial=${ocrResult.serialNumberExtracted} conf=${ocrResult.confidence}`);
+
+        // Save OCR results
         reading.readingValue = ocrResult.readingValue;
         reading.serialNumberExtracted = ocrResult.serialNumberExtracted;
         reading.confidence = ocrResult.confidence;
         reading.ocrRawText = ocrResult.rawText || null;
-
-        // We leave validationStatus as 'pending' here, because next step is the validationService
-        // which checks if readingValue > previousReadingValue, maps serial to db, etc.
+        reading.ocrMethod = ocrResult.ocrMethod;
         await reading.save();
-        console.log(`[OCR Worker] Job completed and saved for reading ID: ${readingId}`);
 
-        // Trigger validation and billing pipeline safely
-        const validatedReading = await validationService.validateReading(readingId);
-
-        // Only bill if OCR explicitly verified reading was logically sound
-        if (validatedReading.validationStatus === 'validated') {
+        // Validate then bill
+        const validated = await validationService.validateReading(readingId);
+        if (validated.validationStatus === 'validated') {
             await billingService.generateBill(readingId);
         }
 
     } catch (error) {
-        console.error(`[OCR Worker] Job failed for reading ID: ${readingId}`, error);
-
-        // 4. On failure, mark the reading as failed for manual review
-        // We intentionally ignore errors trying to write the failure state to prevent crash looping
-        try {
-            await Reading.findByIdAndUpdate(readingId, {
-                validationStatus: 'failed',
-                confidence: 0
-            });
-        } catch (saveError) {
-            console.error('[OCR Worker] Could not update reading failure status', saveError);
+        console.error(`[OCR Worker] Job failed for ${readingId}:`, error.message);
+        await Reading.findByIdAndUpdate(readingId, {
+            validationStatus: 'failed',
+            confidence: 0,
+            ocrMethod: 'failed',
+        }).catch(() => {});
+    } finally {
+        // Always clean up temp file
+        if (isTemp && absolutePath) {
+            fs.unlink(absolutePath, () => {});
         }
     }
 };
 
-module.exports = { runOcrJob };
+module.exports = { runOcrJob, resolveImagePath };

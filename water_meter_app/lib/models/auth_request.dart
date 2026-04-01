@@ -28,6 +28,7 @@ class RegisterRequest {
   final String? email;
   final String password;
   final String meterSerialNumber;
+  final String category;
 
   RegisterRequest({
     required this.accountNumber,
@@ -36,6 +37,7 @@ class RegisterRequest {
     this.email,
     required this.password,
     required this.meterSerialNumber,
+    required this.category,
   });
 
   Map<String, dynamic> toJson() {
@@ -46,6 +48,7 @@ class RegisterRequest {
       'email': email,
       'password': password,
       'meterSerialNumber': meterSerialNumber,
+      'category': category,
     };
   }
 }

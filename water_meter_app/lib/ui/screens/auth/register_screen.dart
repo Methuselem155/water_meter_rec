@@ -20,6 +20,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _meterSerialController = TextEditingController();
+  
+  String? _selectedCategory = 'RESIDENTIAL';
+  final List<String> _categories = ['PUBLIC TAP', 'RESIDENTIAL', 'NON RESIDENTIAL', 'INDUSTRIES'];
 
   @override
   void dispose() {
@@ -44,6 +47,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
         password: _passwordController.text,
         meterSerialNumber: _meterSerialController.text.trim(),
+        category: _selectedCategory ?? 'RESIDENTIAL',
       );
 
       final success = await ref.read(authProvider.notifier).register(request);
@@ -134,6 +138,29 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   textInputAction: TextInputAction.next,
                   validator: (value) => value!.trim().isEmpty ? 'Required field' : null,
+                ),
+                const SizedBox(height: 16),
+
+                // Customer Category
+                DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: const InputDecoration(
+                    labelText: 'Customer Category *',
+                    prefixIcon: Icon(Icons.category),
+                    helperText: 'Select your customer type for tariff calculation.',
+                  ),
+                  items: _categories.map((category) {
+                    return DropdownMenuItem(
+                      value: category,
+                      child: Text(category),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCategory = value;
+                    });
+                  },
+                  validator: (value) => value == null ? 'Please select a category' : null,
                 ),
                 const SizedBox(height: 16),
 

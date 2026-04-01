@@ -4,12 +4,13 @@ import 'core/theme.dart';
 import 'core/constants.dart';
 import 'ui/screens/auth/splash_screen.dart';
 import 'ui/screens/camera/camera_screen.dart';
-import 'ui/screens/home/home_screen.dart'; // Import the new Home badge
-import 'ui/screens/history/history_screen.dart'; // Import Live History
+import 'ui/screens/home/home_screen.dart';
+import 'ui/screens/history/history_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/background_service_provider.dart';
 import 'workers/sync_worker.dart';
 import 'data/local/pending_reading.dart';
+import 'providers/history_provider.dart';
 
 void main() async {
   // Ensure flutter gets initialized before running any async platform code.
@@ -48,37 +49,31 @@ class WaterMeterApp extends StatelessWidget {
   }
 }
 
-class MainScreen extends StatefulWidget {
+class MainScreen extends ConsumerWidget {
   const MainScreen({super.key});
 
-  @override
-  State<MainScreen> createState() => _MainScreenState();
-}
-
-class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
-
-  // Render Home dynamically mapping to 0
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const CameraScreen(),
-    const HistoryScreen(), // Now links live History Feed
+  static const List<Widget> _screens = [
+    HomeScreen(),
+    CameraScreen(),
+    HistoryScreen(),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentIndex = ref.watch(activeTabProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Water Meter System')),
-      body: _screens[_currentIndex],
+      body: IndexedStack(
+        index: currentIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        currentIndex: currentIndex,
+        onTap: (index) => ref.read(activeTabProvider.notifier).state = index,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt),
-            label: 'Capture',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: 'Capture'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
         ],
       ),

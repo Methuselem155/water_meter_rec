@@ -39,9 +39,29 @@ const handleUpload = (req, res, next) => {
 router.post(
     '/upload',
     uploadLimiter,
-    authMiddleware,      // Check token
-    handleUpload,        // Handle form-data (req.file)
+    authMiddleware,
+    handleUpload,
     readingController.uploadReading
+);
+
+// @route   POST /api/readings/scan
+// @desc    Receive pre-cropped display + serial images, run focused OCR, return reading
+// @access  Private
+router.post(
+    '/scan',
+    uploadLimiter,
+    authMiddleware,
+    (req, res, next) => {
+        const upload = uploadMiddleware.fields([
+            { name: 'display', maxCount: 1 },
+            { name: 'serial',  maxCount: 1 },
+        ]);
+        upload(req, res, (err) => {
+            if (err) return res.status(400).json({ success: false, message: 'Upload error', errors: [err.message] });
+            next();
+        });
+    },
+    readingController.scanReading
 );
 
 // @route   GET /api/readings/:id

@@ -1,16 +1,37 @@
 /**
- * Defines the tiered pricing structure for water consumption.
- * Bands are evaluated sequentially.
- * 
- * Example interpretation:
- * - The first 5 units cost 0.50 each.
- * - The next 5 units (up to 10 total) cost 0.75 each.
- * - Any units beyond 10 cost 1.00 each.
+ * Water tariff rates per customer category (VAT exclusive).
+ * Source: WASAC Rwanda Water Tariff Schedule.
+ *
+ * VAT rate: 18%
  */
-const tariffs = [
-    { upTo: 5, rate: 0.5 },
-    { upTo: 10, rate: 0.75 },
-    { upTo: Infinity, rate: 1.0 }
-];
 
-module.exports = tariffs;
+const VAT_RATE = 0.18;
+
+const TARIFFS = {
+    'PUBLIC TAP': {
+        type: 'flat',
+        rate: 323, // RWF per m³
+    },
+    'RESIDENTIAL': {
+        type: 'progressive',
+        bands: [
+            { upTo: 5,        rate: 340 },
+            { upTo: 20,       rate: 720 },
+            { upTo: 50,       rate: 845 },
+            { upTo: Infinity, rate: 877 },
+        ],
+    },
+    'NON RESIDENTIAL': {
+        type: 'progressive',
+        bands: [
+            { upTo: 50,       rate: 877 },
+            { upTo: Infinity, rate: 895 },
+        ],
+    },
+    'INDUSTRIES': {
+        type: 'flat',
+        rate: 736, // RWF per m³
+    },
+};
+
+module.exports = { TARIFFS, VAT_RATE };

@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\exposure\exposure.py
+# hypothesis_version: 6.151.10
+
+[0.05, 0.5, 2.0, 255, 256, 'adjust_gamma', 'adjust_log', 'adjust_sigmoid', 'bool', 'dtype', 'equalize_hist', 'float', 'histogram', 'image', 'linear', 'rescale_intensity', 'uint10', 'uint12', 'uint14', 'uint8']

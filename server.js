@@ -6,7 +6,17 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const errorHandler = require('./middleware/errorHandler');
+const authMiddleware = require('./middleware/authMiddleware');
 const { terminateWorker } = require('./services/ocrService');
+
+// Validate required environment variables before starting
+const REQUIRED_ENV_VARS = ['JWT_SECRET', 'MONGODB_URI'];
+const missingVars = REQUIRED_ENV_VARS.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+    console.error(`[Startup] Missing required environment variables: ${missingVars.join(', ')}`);
+    console.error('[Startup] Please set them in your .env file. See .env.example for reference.');
+    process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,9 +24,7 @@ const PORT = process.env.PORT || 3000;
 // Connect to MongoDB
 const connectDB = async () => {
   try {
-    // Determine the URI to use, fallback to localhost if missing (for safety during testing)
-    const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/water-meter';
-    await mongoose.connect(uri);
+    await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('Error connecting to MongoDB:', error.message);
@@ -38,20 +46,36 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // 3. CORS limits
-app.use(cors()); // Note: In production, specify specific allowed origin (e.g., origin: 'https://admin-panel.com')
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : [];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, Postman)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        callback(new Error(`CORS: Origin '${origin}' not allowed`));
+    },
+    credentials: true
+}));
 
 // 4. Payload Parsing
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
-// 5. Static Folders (Exposing the images for development review)
-// Caution: Ensure no sensitive data lives here, or attach authMiddleware protecting it.
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 5. Static Folders — protected by auth so only authenticated users can fetch meter images
+app.use('/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
+// OCR_test images — public so Image.network in Flutter can load without auth header
+app.use('/OCR_test', express.static(path.join(__dirname, 'OCR_test')));
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/readings', require('./routes/readingRoutes'));
 app.use('/api/bills', require('./routes/billRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 // Simple test route
 app.get('/', (req, res) => {
@@ -62,8 +86,8 @@ app.get('/', (req, res) => {
 app.use(errorHandler);
 
 // Start the server
-const server = app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });
 
 // Graceful shutdown handler

@@ -106,11 +106,43 @@ class HomeScreen extends ConsumerWidget {
             if (failedCount > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 16),
-                child: _StatusCard(
-                  icon: Icons.error_outline,
-                  title: '$failedCount Failed Uploads',
-                  subtitle: 'These require manual review.',
-                  color: Colors.red,
+                child: GestureDetector(
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Clear Failed Uploads?'),
+                        content: const Text(
+                          'These readings failed permanently (often due to cache purges). Would you like to clear them?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              final failedReadings = localStorage.getFailedReadings();
+                              for (var r in failedReadings) {
+                                await localStorage.deletePendingReading(r.id);
+                              }
+                            },
+                            child: const Text(
+                              'Clear All',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: _StatusCard(
+                    icon: Icons.error_outline,
+                    title: '$failedCount Failed Uploads',
+                    subtitle: 'Tap to clear and review.',
+                    color: Colors.red,
+                  ),
                 ),
               ),
           ],

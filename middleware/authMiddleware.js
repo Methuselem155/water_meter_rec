@@ -23,7 +23,16 @@ const authMiddleware = (req, res, next) => {
 
     try {
         // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_here');
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!jwtSecret) {
+            console.error('[Auth] JWT_SECRET environment variable is not set');
+            return res.status(500).json({
+                success: false,
+                message: 'Server configuration error',
+                errors: ['Authentication service is misconfigured']
+            });
+        }
+        const decoded = jwt.verify(token, jwtSecret);
 
         // Attach user payload to request
         req.user = decoded.user;

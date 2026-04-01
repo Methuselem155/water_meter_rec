@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\tifffile\_imagecodecs.py
+# hypothesis_version: 6.151.10
+
+[129, 258, '<', '>', 'bitorder_decode', 'delta_decode', 'delta_encode', 'f', 'float24_decode', 'lzma_decode', 'lzma_encode', 'packbits_decode', 'packints_decode', 'packints_encode', 'uint8', 'zlib_decode', 'zlib_encode', 'zstd_decode', 'zstd_encode', '|B']

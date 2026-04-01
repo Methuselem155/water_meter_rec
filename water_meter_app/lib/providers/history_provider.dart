@@ -4,6 +4,12 @@ import '../models/bill.dart';
 import '../repositories/reading_repository.dart';
 import '../repositories/bill_repository.dart';
 
+// Sentinel to distinguish "not passed" from explicit null in copyWith
+const _keep = Object();
+
+// Controls the active bottom nav tab index from anywhere in the app
+final activeTabProvider = StateProvider<int>((ref) => 0);
+
 // ------------------------------------------------------------------
 // State class for Paginated Reading Data
 // ------------------------------------------------------------------
@@ -41,7 +47,7 @@ class HistoryState {
     List<Bill>? bills,
     bool? isLoading,
     bool? isFetchingMore,
-    String? error,
+    Object? error = _keep, // use sentinel so null can explicitly clear the error
     int? readingPage,
     bool? hasMoreReadings,
     int? billPage,
@@ -53,7 +59,7 @@ class HistoryState {
       bills: bills ?? this.bills,
       isLoading: isLoading ?? this.isLoading,
       isFetchingMore: isFetchingMore ?? this.isFetchingMore,
-      error: error, // Can accept null to clear
+      error: identical(error, _keep) ? this.error : error as String?,
       readingPage: readingPage ?? this.readingPage,
       hasMoreReadings: hasMoreReadings ?? this.hasMoreReadings,
       billPage: billPage ?? this.billPage,
@@ -69,33 +75,74 @@ class HistoryState {
 class HistoryNotifier extends Notifier<HistoryState> {
   late ReadingRepository _readingRepo;
   late BillRepository _billRepo;
+  bool _isDisposed = false;
 
   @override
   HistoryState build() {
-    _readingRepo = ref.watch(readingRepositoryProvider);
-    _billRepo = ref.watch(billRepositoryProvider);
+    _readingRepo = ref.read(readingRepositoryProvider);
+    _billRepo = ref.read(billRepositoryProvider);
 
-    // Initial fetch of both datasets upon provider creation
-    refreshAll();
+    ref.onDispose(() => _isDisposed = true);
+
+    // Kick off initial fetch once on first build only
+    Future.microtask(() {
+      if (!_isDisposed) _performInitialFetch();
+    });
 
     return HistoryState();
   }
 
-  void toggleView() {
-    state = state.copyWith(showingBills: !state.showingBills);
-    // If we toggle and haven't loaded data yet, load it
-    if (state.showingBills && state.bills.isEmpty && state.hasMoreBills) {
-      _fetchBills();
+  bool get mounted => !_isDisposed;
+
+  /// Perform initial data fetch
+  Future<void> _performInitialFetch() async {
+    if (_isDisposed) return;
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await Future.wait([
+        _fetchReadings(refresh: true),
+        _fetchBills(refresh: true),
+      ]);
+    } catch (e) {
+      if (!_isDisposed) state = state.copyWith(error: e.toString());
+    } finally {
+      if (!_isDisposed) state = state.copyWith(isLoading: false);
     }
   }
 
+  void toggleView() {
+    state = state.copyWith(showingBills: !state.showingBills);
+    // If we toggle to bills and haven't loaded any bills yet, load them
+    if (state.showingBills && state.bills.isEmpty && state.hasMoreBills) {
+      _fetchBills(refresh: true);
+    }
+  }
+
+  /// Prepend a freshly uploaded reading to the top of the list immediately,
+  /// then refresh from server in the background to stay in sync.
+  void prependReading(Reading reading) {
+    final alreadyExists = state.readings.any((r) => r.id == reading.id);
+    if (!alreadyExists) {
+      state = state.copyWith(readings: [reading, ...state.readings]);
+    }
+    // Background refresh — replaces the optimistic entry with server truth
+    Future.microtask(() async {
+      if (!_isDisposed) await _fetchReadings(refresh: true);
+    });
+  }
+
+  /// Public method to manually refresh readings and bills
   Future<void> refreshAll() async {
     state = state.copyWith(isLoading: true, error: null);
-    await Future.wait([
-      _fetchReadings(refresh: true),
-      _fetchBills(refresh: true),
-    ]);
-    state = state.copyWith(isLoading: false);
+    try {
+      await Future.wait([
+        _fetchReadings(refresh: true),
+        _fetchBills(refresh: true),
+      ]);
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   Future<void> loadMore() async {

@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\io\_io.py
+# hypothesis_version: 6.151.10
+
+[255, '.tif', '.tiff', '0.25', '0.27', '>=3.3', '_app_show', 'imread', 'imread_collection', 'imsave', 'imshow', 'imshow_collection', 'lower', 'matplotlib', 'ndim', 'plugin', 'show', 'tifffile', 'uint8']

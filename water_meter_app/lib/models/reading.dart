@@ -27,18 +27,36 @@ class Reading extends Equatable {
   });
 
   factory Reading.fromJson(Map<String, dynamic> json) {
+    // Safely parse readingValue which might be a String from backend
+    num? parsedValue;
+    if (json['readingValue'] != null) {
+      if (json['readingValue'] is num) {
+        parsedValue = json['readingValue'];
+      } else {
+        parsedValue = num.tryParse(json['readingValue'].toString());
+      }
+    }
+
     return Reading(
       id: json['_id'] ?? json['id'] ?? '',
-      // Sometimes meterId is fully populated, sometimes just ID
-      meterId: json['meterId'] is Map ? (json['meterId']['_id'] ?? '') : (json['meterId'] ?? ''),
+      // Sometimes meterId is fully populated, sometimes just ID, sometimes keyed as 'meter'
+      meterId: json['meterId'] is Map
+          ? (json['meterId']['_id'] ?? '')
+          : json['meterId'] != null
+              ? (json['meterId'] ?? '')
+              : json['meter'] is Map
+                  ? (json['meter']['_id'] ?? '')
+                  : (json['meter'] ?? ''),
       imagePath: json['imagePath'],
       serialNumberExtracted: json['serialNumberExtracted'],
       extracted: json['extracted'] ?? json['ocrRawText'],
-      readingValue: json['readingValue'],
-      confidence: json['confidence'],
+      readingValue: parsedValue,
+      confidence: json['confidence'] != null
+          ? num.tryParse(json['confidence'].toString())
+          : null,
       validationStatus: json['validationStatus'] ?? 'pending',
-      submissionTime: json['submissionTime'] != null 
-          ? DateTime.parse(json['submissionTime']) 
+      submissionTime: json['submissionTime'] != null
+          ? DateTime.parse(json['submissionTime'])
           : DateTime.now(),
       billingPeriod: json['billingPeriod'],
     );

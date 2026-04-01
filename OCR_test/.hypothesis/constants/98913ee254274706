@@ -1,0 +1,4 @@
+# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\imageio\core\findlib.py
+# hypothesis_version: 6.151.10
+
+['%s:\n%s', '.dll', '.dylib', '.so', '.so.', '/lib', '/opt/local/lib', '/usr/lib', '/usr/local/lib', 'DLLs', 'Library/bin', 'base_prefix', 'bin', 'darwin', 'lib', 'shared', 'win', '~']

@@ -1,97 +1,149 @@
 const Bill = require('../models/Bill');
 const Reading = require('../models/Reading');
-const tariffs = require('../config/tariffs');
+const Meter = require('../models/Meter');
+const User = require('../models/User');
+const { TARIFFS, VAT_RATE } = require('../config/tariffs');
 
 /**
- * Calculates total bill amount using tiered tariff structure.
- * @param {Number} consumption 
- * @returns {Object} Total amount and the breakdown mapping for auditing.
+ * Calculate bill amount for a given category and consumption.
+ * Returns totalAmount (VAT exclusive), breakdown, vatAmount, totalAmountVatInclusive.
+ *
+ * @param {string} category - Customer category
+ * @param {number} consumption - m³ consumed
+ * @returns {{ totalAmount, breakdown, vatAmount, totalAmountVatInclusive }}
  */
-const calculateAmount = (consumption) => {
-    let remaining = consumption;
+const calculateBill = (category, consumption) => {
+    const tariff = TARIFFS[category];
+    if (!tariff) throw new Error(`Unknown tariff category: ${category}`);
+
     let totalAmount = 0;
-    let previousLimit = 0;
-    const breakdown = [];
+    let breakdown = [];
 
-    for (const band of tariffs) {
-        if (remaining <= 0) break;
+    if (tariff.type === 'flat') {
+        totalAmount = consumption * tariff.rate;
+        breakdown = [{
+            units: consumption,
+            rate: tariff.rate,
+            cost: totalAmount,
+            tierName: 'Flat rate',
+        }];
+    } else {
+        // Progressive / block calculation
+        let remaining = consumption;
+        let previousLimit = 0;
 
-        // How many units exist in this specific tier structure
-        const bandSize = band.upTo - previousLimit;
-        const billableUnitsInBand = Math.min(remaining, bandSize);
+        for (const band of tariff.bands) {
+            if (remaining <= 0) break;
 
-        const costForBand = billableUnitsInBand * band.rate;
-        totalAmount += costForBand;
-        remaining -= billableUnitsInBand;
+            const bandSize = band.upTo === Infinity
+                ? remaining
+                : band.upTo - previousLimit;
 
-        breakdown.push({
-            units: billableUnitsInBand,
-            rate: band.rate,
-            cost: costForBand,
-            tierName: `Tier ${breakdown.length + 1} (up to ${band.upTo})`
-        });
+            const billableUnits = Math.min(remaining, bandSize);
+            const cost = billableUnits * band.rate;
 
-        previousLimit = band.upTo;
+            totalAmount += cost;
+            remaining -= billableUnits;
+
+            breakdown.push({
+                units: billableUnits,
+                rate: band.rate,
+                cost,
+                tierName: band.upTo === Infinity
+                    ? `Above ${previousLimit} m³`
+                    : `${previousLimit + 1}–${band.upTo} m³`,
+            });
+
+            previousLimit = band.upTo;
+        }
     }
 
-    return { totalAmount, breakdown };
+    const vatAmount = Math.round(totalAmount * VAT_RATE * 100) / 100;
+    const totalAmountVatInclusive = Math.round((totalAmount + vatAmount) * 100) / 100;
+    totalAmount = Math.round(totalAmount * 100) / 100;
+
+    return { totalAmount, breakdown, vatAmount, totalAmountVatInclusive };
 };
 
 /**
- * Generates a bill based on a recently validated reading.
- * @param {ObjectId} readingId 
- * @returns {Promise<Object>} The generated Bill document.
+ * Generate a bill for a validated reading.
+ * Fetches user category, computes consumption, applies tariff.
+ *
+ * @param {ObjectId} readingId
+ * @returns {Promise<Bill>}
  */
 exports.generateBill = async (readingId) => {
     try {
-        const currentReading = await Reading.findById(readingId);
+        const currentReading = await Reading.findById(readingId).populate('meterId');
+        if (!currentReading) throw new Error(`Reading ${readingId} not found.`);
 
-        if (!currentReading) {
-            throw new Error(`Reading ${readingId} not found.`);
-        }
-
-        // Ensure we only bill for completed validations
         if (currentReading.validationStatus !== 'validated') {
-            throw new Error(`Cannot generate bill for reading ${readingId} with status ${currentReading.validationStatus}.`);
+            throw new Error(`Cannot bill reading ${readingId} with status ${currentReading.validationStatus}.`);
         }
 
-        // Fetch the previous reading to gauge consumption
+        // Fetch user via meter
+        const meter = currentReading.meterId;
+        const user = await User.findById(meter.userId).select('category');
+        if (!user) throw new Error(`User not found for meter ${meter._id}`);
+
+        const category = user.category || 'RESIDENTIAL';
+
+        // Fetch previous validated reading for this meter
         const previousReading = await Reading.findOne({
-            meterId: currentReading.meterId,
+            meterId: currentReading.meterId._id || currentReading.meterId,
             validationStatus: 'validated',
-            submissionTime: { $lt: currentReading.submissionTime }
+            submissionTime: { $lt: currentReading.submissionTime },
         }).sort({ submissionTime: -1 });
 
-        const previousReadingValue = previousReading ? previousReading.readingValue : 0;
+        const previousReadingValue = previousReading ? previousReading.readingValue : null;
         const previousReadingId = previousReading ? previousReading._id : null;
 
-        // Calculate flat consumption
+        // First reading — no previous, no bill yet
+        if (previousReadingValue === null) {
+            console.log(`[Billing] First reading for meter ${meter._id} — no bill generated.`);
+            return null;
+        }
+
         const consumption = currentReading.readingValue - previousReadingValue;
 
-        // Safety check: Cannot be negative here since validationService should have caught this.
-        // If we land here somehow, default to 0 to prevent paying users
-        const actualConsumption = consumption < 0 ? 0 : consumption;
+        if (consumption < 0) {
+            throw new Error(
+                `Negative consumption for reading ${readingId}: ` +
+                `current=${currentReading.readingValue}, previous=${previousReadingValue}.`
+            );
+        }
 
-        // Calculate monetary pricing tiers
-        const { totalAmount, breakdown } = calculateAmount(actualConsumption);
+        const { totalAmount, breakdown, vatAmount, totalAmountVatInclusive } =
+            calculateBill(category, consumption);
 
-        // Form bill mapping
         const bill = new Bill({
             readingId: currentReading._id,
-            previousReadingId: previousReadingId,
-            consumption: actualConsumption,
+            userId: user._id,
+            previousReadingId,
+            previousReadingValue,
+            currentReadingValue: currentReading.readingValue,
+            consumption,
+            category,
             tariffBands: breakdown,
-            totalAmount: totalAmount,
-            status: 'final' // Per instructions, immediately solidify bill
+            totalAmount,
+            vatAmount,
+            totalAmountVatInclusive,
+            status: 'final',
         });
 
-        const savedBill = await bill.save();
-        console.log(`[Billing Service] Generated Bill ${savedBill._id} for reading ${readingId}. Total: $${totalAmount}`);
+        const saved = await bill.save();
+        console.log(
+            `[Billing] Bill ${saved._id} — category=${category} ` +
+            `consumption=${consumption}m³ amount=${totalAmount} RWF (VAT incl: ${totalAmountVatInclusive})`
+        );
 
-        return savedBill;
+        return saved;
 
     } catch (error) {
-        console.error(`[Billing Service] Error generating bill for reading ${readingId}:`, error);
+        console.error(`[Billing] Error generating bill for reading ${readingId}:`, error.message);
         throw error;
     }
 };
+
+// Export for testing / direct use
+exports.calculateBill = calculateBill;
