@@ -1,5 +1,5 @@
 """
-Persistent OCR HTTP server.
+Persistent OCR HTTP server (Claude Vision backend).
 POST /ocr  { "imagePath": "/abs/path/to/image.jpg", "mode": "display|serial|auto" }
 GET  /health
 
@@ -8,14 +8,9 @@ Start: python python_ocr_server.py [--port 5001]
 import sys, json, argparse, traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Import extract_reading from python_ocr.py
-from python_ocr import extract_reading, load_image
+from python_ocr import extract_reading
 
-# Pre-load OCR engine at startup
-print('[OCR Server] Loading OCR engine...', flush=True)
-from python_ocr import get_engine
-get_engine()
-print('[OCR Server] Model ready.', flush=True)
+print('[OCR Server] Claude Vision API ready.', flush=True)
 
 
 class OcrHandler(BaseHTTPRequestHandler):
@@ -47,14 +42,7 @@ class OcrHandler(BaseHTTPRequestHandler):
 
             print(f'[OCR Server] Processing: {image_path} mode={mode}', flush=True)
 
-            if mode == 'serial':
-                # Serial mode: load image and run serial extraction
-                img = load_image(image_path)
-                result = extract_reading(img, 'serial')
-            else:
-                # Display/auto mode: pass image_path directly so meter_extractor
-                # can use its own pipeline (crop_digit_strip etc.)
-                result = extract_reading(image_path, mode)
+            result = extract_reading(image_path, mode)
 
             print(f'[OCR Server] Done: raw={result.get("rawText")} value={result.get("readingValue")}', flush=True)
             self._json(200, result)

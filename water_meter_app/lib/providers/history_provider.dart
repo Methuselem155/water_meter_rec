@@ -29,6 +29,9 @@ class HistoryState {
   // Track which view the user is looking at
   final bool showingBills;
 
+  // Active status filter for bills: null = All
+  final String? billStatusFilter;
+
   HistoryState({
     this.readings = const [],
     this.bills = const [],
@@ -39,7 +42,8 @@ class HistoryState {
     this.hasMoreReadings = true,
     this.billPage = 1,
     this.hasMoreBills = true,
-    this.showingBills = false, // Default to showing readings
+    this.showingBills = false,
+    this.billStatusFilter,
   });
 
   HistoryState copyWith({
@@ -53,6 +57,7 @@ class HistoryState {
     int? billPage,
     bool? hasMoreBills,
     bool? showingBills,
+    Object? billStatusFilter = _keep,
   }) {
     return HistoryState(
       readings: readings ?? this.readings,
@@ -65,6 +70,9 @@ class HistoryState {
       billPage: billPage ?? this.billPage,
       hasMoreBills: hasMoreBills ?? this.hasMoreBills,
       showingBills: showingBills ?? this.showingBills,
+      billStatusFilter: identical(billStatusFilter, _keep)
+          ? this.billStatusFilter
+          : billStatusFilter as String?,
     );
   }
 }
@@ -117,6 +125,17 @@ class HistoryNotifier extends Notifier<HistoryState> {
     if (state.showingBills && state.bills.isEmpty && state.hasMoreBills) {
       _fetchBills(refresh: true);
     }
+  }
+
+  /// Change the active bill status filter and reload bills.
+  void setStatusFilter(String? status) {
+    state = state.copyWith(
+      billStatusFilter: status,
+      bills: [],
+      billPage: 1,
+      hasMoreBills: true,
+    );
+    _fetchBills(refresh: true);
   }
 
   /// Prepend a freshly uploaded reading to the top of the list immediately,
@@ -179,7 +198,10 @@ class HistoryNotifier extends Notifier<HistoryState> {
   Future<void> _fetchBills({bool refresh = false}) async {
     try {
       final page = refresh ? 1 : state.billPage + 1;
-      final paginatedResult = await _billRepo.getBills(page: page);
+      final paginatedResult = await _billRepo.getBills(
+        page: page,
+        status: state.billStatusFilter,
+      );
 
       state = state.copyWith(
         bills: refresh

@@ -1,5 +1,5 @@
 const Reading = require('../models/Reading');
-const ocrService = require('../services/ocrService');
+const { processImage } = require('../services/ocrService');
 const validationService = require('../services/validationService');
 const billingService = require('../services/billingService');
 const path = require('path');
@@ -38,6 +38,11 @@ const resolveImagePath = (imagePath) => {
 
 /**
  * Run OCR on a reading, then validate and bill if successful.
+ *
+ * For a single uploaded image the worker runs both extractions in parallel:
+ *   - python ocr_model/ocr.py --image <path> --meter  → consumption digits
+ *   - python ocr_model/ocr.py --image <path> --serial → serial number
+ *
  * @param {ObjectId} readingId
  */
 const runOcrJob = async (readingId) => {
@@ -68,16 +73,26 @@ const runOcrJob = async (readingId) => {
         isTemp = resolved.isTemp;
 
         console.log(`[OCR Worker] Running OCR on: ${absolutePath}`);
-        const ocrResult = await ocrService.processImage(absolutePath);
 
-        console.log(`[OCR Worker] OCR done — value=${ocrResult.readingValue} serial=${ocrResult.serialNumberExtracted} conf=${ocrResult.confidence}`);
+        // Single auto-mode call extracts reading + serial in one Claude Vision request
+        const result = await processImage(absolutePath, 'auto');
 
-        // Save OCR results
-        reading.readingValue = ocrResult.readingValue;
-        reading.serialNumberExtracted = ocrResult.serialNumberExtracted;
-        reading.confidence = ocrResult.confidence;
-        reading.ocrRawText = ocrResult.rawText || null;
-        reading.ocrMethod = ocrResult.ocrMethod;
+        console.log(
+            `[OCR Worker] OCR done — ` +
+            `integer=${result.integerPart} fraction=${result.fractionPart} ` +
+            `value=${result.readingValue} ` +
+            `serial=${result.serialNumberExtracted} ` +
+            `conf=${result.confidence}`
+        );
+
+        // Persist OCR results — including split integer/decimal fields
+        reading.readingValue          = result.readingValue;
+        reading.integerReading        = result.integerPart   || null;
+        reading.decimalReading        = result.fractionPart  || null;
+        reading.serialNumberExtracted = result.serialNumberExtracted;
+        reading.confidence            = result.confidence;
+        reading.ocrRawText            = result.rawText || null;
+        reading.ocrMethod             = result.ocrMethod;
         await reading.save();
 
         // Validate then bill
@@ -88,11 +103,18 @@ const runOcrJob = async (readingId) => {
 
     } catch (error) {
         console.error(`[OCR Worker] Job failed for ${readingId}:`, error.message);
-        await Reading.findByIdAndUpdate(readingId, {
-            validationStatus: 'failed',
-            confidence: 0,
-            ocrMethod: 'failed',
-        }).catch(() => {});
+        try {
+            await Reading.findByIdAndUpdate(readingId, {
+                validationStatus: 'failed',
+                confidence: 0,
+                ocrMethod: 'failed',
+            });
+        } catch (dbErr) {
+            console.error(
+                `[OCR Worker] CRITICAL — could not update reading ${readingId} to failed status:`,
+                dbErr.message
+            );
+        }
     } finally {
         // Always clean up temp file
         if (isTemp && absolutePath) {

@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\io\__init__.py
-# hypothesis_version: 6.151.10
-
-['ImageCollection', 'MultiImage', '_available_plugins', 'available_plugins', 'concatenate_images', 'imread', 'imread_collection', 'imsave', 'load_sift', 'load_surf', 'pop', 'push']

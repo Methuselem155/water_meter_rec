@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\imageio\core\util.py
-# hypothesis_version: 6.151.10
-
-[0.1, 0.499999999, 2.0, 100, '\x08', '%', '%0.4g %s', '%2.1f%%', '%i %s', '%i/%i %s (%2.1f%%)', '%s (%s): ', '%s: ', '-\\|/', '.', '../settings', '/var/tmp', 'APPDATA', 'Application Support', 'FAIL ', 'IMAGEIO_USERDIR', 'LOCALAPPDATA', 'Library', 'P', 'Range [0, 1].', 'Range [{}, {}].', '[a-z_]\\w*$', '__pypy__', 'darwin', 'float', 'float64', 'freebsd', 'freebsd%i', 'frozen', 'imageio', 'linux', 'linux%i', 'meta', 'osx%i', 'resources', 'settings', 'test.write', 'wb', 'win', 'win%i', '~']

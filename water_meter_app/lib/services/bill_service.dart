@@ -7,13 +7,16 @@ class BillService {
 
   BillService(DioClient dioClient) : _dio = dioClient.dio;
 
-  Future<PaginatedBills> fetchBills({int page = 1, int limit = 10}) async {
+  Future<PaginatedBills> fetchBills({
+    int page = 1,
+    int limit = 10,
+    String? status, // null = all, 'unpaid' | 'paid' | 'overdue'
+  }) async {
     try {
-      final response = await _dio.get(
-        '/bills',
-        queryParameters: {'page': page, 'limit': limit},
-      );
-      
+      final params = <String, dynamic>{'page': page, 'limit': limit};
+      if (status != null) params['status'] = status;
+
+      final response = await _dio.get('/bills', queryParameters: params);
       if (response.statusCode == 200 && response.data['success'] == true) {
         return PaginatedBills.fromJson(response.data);
       }
@@ -31,13 +34,25 @@ class BillService {
       }
       throw Exception(response.data['message'] ?? 'Failed to load bill details');
     } catch (e) {
-       throw _handleError(e);
+      throw _handleError(e);
+    }
+  }
+
+  Future<BillSummary> fetchBillsSummary() async {
+    try {
+      final response = await _dio.get('/bills/summary');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return BillSummary.fromJson(response.data);
+      }
+      throw Exception(response.data['message'] ?? 'Failed to fetch bill summary');
+    } catch (e) {
+      throw _handleError(e);
     }
   }
 
   Exception _handleError(dynamic e) {
     if (e is DioException) {
-      if (e.response != null && e.response?.data != null) {
+      if (e.response?.data != null) {
         final message = e.response?.data['message'] ?? 'Server error';
         return Exception(message);
       }

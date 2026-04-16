@@ -143,7 +143,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 // Customer Category
                 DropdownButtonFormField<String>(
-                  value: _selectedCategory,
+                  initialValue: _selectedCategory,
                   decoration: const InputDecoration(
                     labelText: 'Customer Category *',
                     prefixIcon: Icon(Icons.category),

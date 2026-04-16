@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Backend (Express API)",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nodemon", "server.js"],
+      "port": 3000
+    },
+    {
+      "name": "Admin Dashboard (React / Vite)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "admin-dashboard"],
+      "port": 5173
+    },
+    {
+      "name": "Python OCR Server",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["python_ocr_server.py"],
+      "port": 5001
+    },
+    {
+      "name": "OCR Model Gradio UI",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["ocr_model/app.py"],
+      "port": 7860
+    }
+  ]
+}

@@ -128,7 +128,8 @@ exports.generateBill = async (readingId) => {
             totalAmount,
             vatAmount,
             totalAmountVatInclusive,
-            status: 'final',
+            status: 'unpaid',
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         });
 
         const saved = await bill.save();

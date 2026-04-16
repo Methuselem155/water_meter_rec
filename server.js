@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -68,8 +68,8 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // 5. Static Folders — protected by auth so only authenticated users can fetch meter images
 app.use('/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
-// OCR_test images — public so Image.network in Flutter can load without auth header
-app.use('/OCR_test', express.static(path.join(__dirname, 'OCR_test')));
+// ocr_model images — public so Image.network in Flutter can load without auth header
+app.use('/ocr_model', express.static(path.join(__dirname, 'ocr_model')));
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));

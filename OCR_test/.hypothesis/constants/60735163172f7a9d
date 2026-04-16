@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\torchvision\io\__init__.py
-# hypothesis_version: 6.151.10
-
-['ImageReadMode', 'decode_avif', 'decode_gif', 'decode_heic', 'decode_image', 'decode_jpeg', 'decode_png', 'decode_webp', 'encode_jpeg', 'encode_png', 'read_file', 'read_image', 'write_file', 'write_jpeg', 'write_png']

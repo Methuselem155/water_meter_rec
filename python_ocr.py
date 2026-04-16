@@ -1,161 +1,246 @@
 """
-Water meter OCR — wires OCR_test/meter_extractor.py to the backend.
+Water meter OCR using Claude Vision API.
 Usage: python python_ocr.py <image_path> [--mode auto|display|serial]
 """
-import sys, json, re, argparse, os
-import cv2
-import numpy as np
-from PIL import Image, ImageOps
+import sys, json, re, argparse, os, base64
+from pathlib import Path
 
-# Add OCR_test to path — do NOT modify anything inside OCR_test
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'OCR_test'))
+# Load .env from the project root (same dir as this script)
+_env_path = Path(__file__).parent / '.env'
+if _env_path.exists():
+    for _line in _env_path.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith('#') and '=' in _line:
+            _k, _, _v = _line.partition('=')
+            os.environ.setdefault(_k.strip(), _v.strip())
 
-from meter_extractor import extract_meter_reading
-from ocr_extractor import OCREngine
+import anthropic
 
-_engine = None
+CLAUDE_MODEL = 'claude-sonnet-4-6'
 
-def get_engine():
-    global _engine
-    if _engine is None:
-        _engine = OCREngine(languages=['en'])
-    return _engine
+EXTRACTION_PROMPT = (
+    "Extract from this water meter image and return ONLY this JSON:\n"
+    "{\n"
+    '  "full_reading": "01001.39",\n'
+    '  "main_digits": "01001",\n'
+    '  "decimal_digits": "39",\n'
+    '  "unit": "m3",\n'
+    '  "serial_number": "I20BA008111",\n'
+    '  "brand": "Itron",\n'
+    '  "confidence": 92,\n'
+    '  "notes": ""\n'
+    "}\n"
+    "Black/dark background = main digits. Red/pink background = decimal digits."
+)
 
 
-def load_image(path):
-    pil = ImageOps.exif_transpose(Image.open(path))
-    return cv2.cvtColor(np.array(pil.convert('RGB')), cv2.COLOR_RGB2BGR)
+def _encode_image(image_path):
+    """Read image file, compress if needed, and return (base64_string, media_type)."""
+    MAX_BYTES = 4 * 1024 * 1024  # 4 MB — stay safely under Claude's 5 MB limit
+
+    with open(image_path, 'rb') as f:
+        data = f.read()
+
+    ext = os.path.splitext(image_path)[1].lower()
+    media_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+    }
+    media_type = media_types.get(ext, 'image/jpeg')
+
+    if len(data) > MAX_BYTES:
+        try:
+            from PIL import Image as PILImage
+            import io
+            img = PILImage.open(image_path).convert('RGB')
+            quality = 85
+            while quality >= 40:
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=quality)
+                buf.seek(0)
+                data = buf.read()
+                if len(data) <= MAX_BYTES:
+                    break
+                quality -= 10
+            media_type = 'image/jpeg'
+        except ImportError:
+            pass  # Pillow not available, send as-is and let Claude reject if too large
+
+    return base64.standard_b64encode(data).decode('utf-8'), media_type
+
+
+def _call_claude(image_path):
+    """Send the full image to Claude Vision and return the parsed JSON dict."""
+    b64_data, media_type = _encode_image(image_path)
+
+    client = anthropic.Anthropic(
+        api_key=os.environ.get('ANTHROPIC_API_KEY'),
+        timeout=60.0,
+        max_retries=2,
+    )
+
+    message = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=512,
+        messages=[
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'type': 'image',
+                        'source': {
+                            'type': 'base64',
+                            'media_type': media_type,
+                            'data': b64_data,
+                        },
+                    },
+                    {
+                        'type': 'text',
+                        'text': EXTRACTION_PROMPT,
+                    },
+                ],
+            }
+        ],
+    )
+
+    text = message.content[0].text.strip()
+
+    # Strip markdown code fences if Claude wraps the JSON in ```
+    text = re.sub(r'^```(?:json)?\s*', '', text)
+    text = re.sub(r'\s*```$', '', text)
+
+    return json.loads(text.strip())
 
 
 def ocr_display(image_path):
-    """
-    Extract meter reading from a pre-cropped display image.
-    Calls extract_meter_reading() from meter_extractor.py exactly as-is.
-    Returns the digit string directly — no modification.
-    """
+    """Extract meter reading via Claude Vision. Returns backend-compatible dict."""
     try:
-        # meter_extractor.py runs from OCR_test/ directory
-        # It needs just the filename if the image is in OCR_test/
-        ocr_test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'OCR_test')
-        abs_path = os.path.abspath(image_path)
+        data = _call_claude(image_path)
 
-        if abs_path.startswith(os.path.abspath(ocr_test_dir) + os.sep):
-            # Image is inside OCR_test/ — pass just the filename
-            lookup_path = os.path.basename(abs_path)
-        else:
-            # Image is elsewhere — pass full absolute path
-            lookup_path = abs_path
+        main_digits    = data.get('main_digits', '') or ''
+        decimal_digits = data.get('decimal_digits', '') or ''
+        full_reading   = data.get('full_reading', '') or ''
+        # Claude returns confidence 0-100; normalize to 0-1
+        confidence     = round(float(data.get('confidence', 0)) / 100.0, 3)
 
-        null_path = 'nul' if os.name == 'nt' else '/dev/null'
+        reading_value = None
+        if full_reading:
+            try:
+                reading_value = float(full_reading)
+            except ValueError:
+                pass
 
-        # meter_extractor must be run with OCR_test as cwd
-        import subprocess, sys
-        proc = subprocess.run(
-            [sys.executable, 'meter_extractor.py', '--image', lookup_path,
-             '--output', null_path],
-            capture_output=True, text=True,
-            cwd=ocr_test_dir
-        )
-        # Parse "Final answer: XXXXXXXX" from stdout
-        reading = ''
-        for line in proc.stdout.splitlines():
-            if line.startswith('Final answer:'):
-                reading = line.split(':', 1)[1].strip()
-                break
-        if not reading:
-            # fallback: parse READING line
-            for line in proc.stdout.splitlines():
-                if 'READING:' in line:
-                    reading = line.split('READING:', 1)[1].strip()
-                    break
-    except Exception as e:
         return {
-            'readingValue': None,
-            'serialNumberExtracted': None,
-            'confidence': 0.0,
-            'rawText': '',
-            'ocrEngine': 'easyocr',
-            'success': False,
+            'integer_reading':        main_digits    or None,
+            'decimal_reading':        decimal_digits or None,
+            'decimal_estimated':      False,
+            'readingValue':           reading_value,
+            'integerPart':            main_digits    or None,
+            'fractionPart':           decimal_digits or None,
+            'serialNumberExtracted':  data.get('serial_number') or None,
+            'confidence':             confidence,
+            'rawText':                full_reading,
+            'ocrEngine':              'claude-vision',
+            'success':                bool(main_digits),
         }
 
-    # reading is the raw string e.g. "01009578"
-    raw_text = re.sub(r'[^0-9?]', '', reading)  # keep digits and ? markers
-    clean_text = raw_text.replace('?', '')       # digits only for readingValue
-
-    reading_value = None
-    try:
-        if clean_text:
-            reading_value = int(clean_text)
-    except ValueError:
-        pass
-
-    return {
-        'readingValue': reading_value,
-        'serialNumberExtracted': None,
-        'confidence': 0.8 if '?' not in raw_text else 0.4,
-        'rawText': raw_text,   # exact string from meter_extractor (e.g. "01009578")
-        'ocrEngine': 'easyocr',
-        'success': bool(clean_text and '?' not in raw_text),
-    }
+    except Exception as e:
+        print(f'[ocr_display] Error: {e}', file=sys.stderr)
+        return {
+            'integer_reading':        None,
+            'decimal_reading':        None,
+            'decimal_estimated':      False,
+            'readingValue':           None,
+            'integerPart':            None,
+            'fractionPart':           None,
+            'serialNumberExtracted':  None,
+            'confidence':             0.0,
+            'rawText':                '',
+            'ocrEngine':              'claude-vision',
+            'success':                False,
+        }
 
 
 def ocr_serial(image_path):
-    """Extract serial number from a pre-cropped serial image."""
-    img = load_image(image_path)
-    results = get_engine().extract(img)
-    serial = None
-    for _, text, conf in results:
-        cleaned = text.upper().strip().replace('(', 'I').replace('*', '').replace(' ', '')
-        for m in re.findall(r'[A-Z0-9]{6,13}', cleaned):
-            if re.search(r'[A-Z]', m) and len(re.findall(r'\d', m)) >= 3:
-                if len(m) > 8 and m[-1].isalpha() and m[-2].isdigit():
-                    m = m[:-1]
-                serial = m
-                break
-        if serial:
-            break
-    return {
-        'readingValue': None,
-        'serialNumberExtracted': serial,
-        'confidence': 1.0 if serial else 0.0,
-        'rawText': serial or '',
-        'ocrEngine': 'easyocr',
-        'success': bool(serial),
-    }
+    """Extract serial number via Claude Vision. Returns backend-compatible dict."""
+    try:
+        data = _call_claude(image_path)
+
+        serial     = data.get('serial_number') or None
+        confidence = round(float(data.get('confidence', 0)) / 100.0, 3)
+
+        return {
+            'readingValue':           None,
+            'serialNumberExtracted':  serial,
+            'confidence':             confidence,
+            'rawText':                serial or '',
+            'ocrEngine':              'claude-vision',
+            'success':                bool(serial),
+        }
+
+    except Exception as e:
+        print(f'[ocr_serial] Error: {e}', file=sys.stderr)
+        return {
+            'readingValue':           None,
+            'serialNumberExtracted':  None,
+            'confidence':             0.0,
+            'rawText':                '',
+            'ocrEngine':              'claude-vision',
+            'success':                False,
+        }
 
 
 def ocr_auto(image_path):
-    """Full image: use meter_extractor for reading, ocr_extractor for serial."""
-    display_result = ocr_display(image_path)
-    img = load_image(image_path)
-    h = img.shape[0]
-    # Serial from bottom 40%
-    bottom = img[int(h * 0.60):, :]
-    serial_result = ocr_serial.__wrapped__(bottom) if hasattr(ocr_serial, '__wrapped__') else None
+    """Extract both reading and serial number via Claude Vision in a single API call."""
+    try:
+        data = _call_claude(image_path)
 
-    # Try serial from full image
-    results = get_engine().extract(img)
-    serial = None
-    for _, text, conf in results:
-        cleaned = text.upper().strip().replace('(', 'I').replace('*', '').replace(' ', '')
-        for m in re.findall(r'[A-Z0-9]{8,13}', cleaned):
-            if re.search(r'[A-Z]', m) and len(re.findall(r'\d', m)) >= 2:
-                serial = m; break
-        if serial: break
+        main_digits    = data.get('main_digits', '') or ''
+        decimal_digits = data.get('decimal_digits', '') or ''
+        full_reading   = data.get('full_reading', '') or ''
+        serial         = data.get('serial_number') or None
+        confidence     = round(float(data.get('confidence', 0)) / 100.0, 3)
 
-    return {
-        'readingValue': display_result['readingValue'],
-        'serialNumberExtracted': serial,
-        'confidence': display_result['confidence'],
-        'rawText': display_result['rawText'],
-        'ocrEngine': 'easyocr',
-        'success': display_result['success'],
-    }
+        reading_value = None
+        if full_reading:
+            try:
+                reading_value = float(full_reading)
+            except ValueError:
+                pass
+
+        return {
+            'readingValue':           reading_value,
+            'integerPart':            main_digits    or None,
+            'fractionPart':           decimal_digits or None,
+            'serialNumberExtracted':  serial,
+            'confidence':             confidence,
+            'rawText':                full_reading,
+            'ocrEngine':              'claude-vision',
+            'success':                bool(main_digits),
+        }
+
+    except Exception as e:
+        print(f'[ocr_auto] Error: {e}', file=sys.stderr)
+        return {
+            'readingValue':           None,
+            'integerPart':            None,
+            'fractionPart':           None,
+            'serialNumberExtracted':  None,
+            'confidence':             0.0,
+            'rawText':                '',
+            'ocrEngine':              'claude-vision',
+            'success':                False,
+        }
 
 
 def extract_reading(image_path, mode='auto'):
-    if mode == 'display': return ocr_display(image_path)
-    if mode == 'serial':  return ocr_serial(image_path)
+    if mode == 'display':
+        return ocr_display(image_path)
+    if mode == 'serial':
+        return ocr_serial(image_path)
     return ocr_auto(image_path)
 
 

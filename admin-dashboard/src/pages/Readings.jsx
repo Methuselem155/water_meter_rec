@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, Check, X } from 'lucide-react';
+import { Eye, Check, X, Trash2 } from 'lucide-react';
 import api from '../services/api';
 
 const Readings = () => {
@@ -7,6 +7,7 @@ const Readings = () => {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
   const [validatingId, setValidatingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     fetchReadings();
@@ -34,6 +35,20 @@ const Readings = () => {
       alert('Failed to update reading status');
     } finally {
       setValidatingId(null);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this reading? Any associated bill will also be removed.')) return;
+    try {
+      setDeletingId(id);
+      await api.delete(`/admin/readings/${id}`);
+      setReadings(prev => prev.filter(r => r._id !== id));
+    } catch (err) {
+      console.error('Failed to delete reading', err);
+      alert('Failed to delete reading');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -91,7 +106,7 @@ const Readings = () => {
                     <td>
                       <div className="flex items-center gap-2">
                         {reading.imagePath && (
-                          <button 
+                          <button
                             className="btn"
                             style={{ padding: '0.5rem', background: 'var(--bg-tertiary)', color: 'var(--accent-primary)' }}
                             onClick={() => setSelectedImage(`http://localhost:3000${reading.imagePath}`)}
@@ -102,7 +117,7 @@ const Readings = () => {
                         )}
                         {reading.validationStatus === 'pending' && (
                           <>
-                            <button 
+                            <button
                               className="btn"
                               style={{ padding: '0.5rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}
                               onClick={() => handleValidation(reading._id, 'validated')}
@@ -111,7 +126,7 @@ const Readings = () => {
                             >
                               <Check size={18} />
                             </button>
-                            <button 
+                            <button
                               className="btn"
                               style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)' }}
                               onClick={() => handleValidation(reading._id, 'failed')}
@@ -122,6 +137,15 @@ const Readings = () => {
                             </button>
                           </>
                         )}
+                        <button
+                          className="btn"
+                          style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)' }}
+                          onClick={() => handleDelete(reading._id)}
+                          disabled={deletingId === reading._id}
+                          title="Delete Reading"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
                     </td>
                   </tr>

@@ -1,18 +1,19 @@
 const jwt = require('jsonwebtoken');
 
 const authMiddleware = (req, res, next) => {
-    // Get token from header
+    // Get token from header — only the standard "Bearer <token>" format is accepted
     const authHeader = req.header('Authorization');
-    let token;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7, authHeader.length);
-    } else {
-        // Also support token without Bearer prefix if provided directly
-        token = authHeader;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            success: false,
+            message: 'No token, authorization denied',
+            errors: ['A Bearer token is required: Authorization: Bearer <token>']
+        });
     }
 
-    // Check if no token
+    const token = authHeader.substring(7).trim();
+
     if (!token) {
         return res.status(401).json({
             success: false,

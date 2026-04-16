@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\torch\_inductor\cudagraph_utils.py
-# hypothesis_version: 6.151.10
-
-['cpu', 'cuda', 'cudagraph_skips', 'cudagraphs', 'inductor', 'meta', 'mutated inputs', 'placeholder', 'stack_trace']

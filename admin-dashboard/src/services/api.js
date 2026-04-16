@@ -29,3 +29,10 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// Reset all system data (readings, bills, meters, non-admin users)
+export const resetSystem = () => api.post('/admin/reset');
+
+// Bills
+export const getBillsSummary = () => api.get('/admin/bills/summary');
+export const confirmPayment = (billId, payload) => api.patch(`/admin/bills/${billId}/confirm-payment`, payload);

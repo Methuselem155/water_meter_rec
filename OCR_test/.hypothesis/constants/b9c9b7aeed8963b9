@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\io\collection.py
-# hypothesis_version: 6.151.10
-
-['([0-9]+)', '.tif', '.tiff', 'ImageCollection', 'MultiImage', '__index__', 'concatenate_images', 'fp', 'img_num', 'rb']

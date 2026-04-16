@@ -1,23 +1,20 @@
+const authMiddleware = require('./authMiddleware');
 const User = require('../models/User');
 
+// Verify JWT then check role === 'admin'
 const adminMiddleware = async (req, res, next) => {
-    try {
-        // req.user is set by authMiddleware
-        if (!req.user || !req.user.id) {
-            return res.status(401).json({ success: false, message: 'Not authorized' });
+    // First run JWT auth
+    authMiddleware(req, res, async () => {
+        try {
+            const user = await User.findById(req.user.id).select('role');
+            if (!user || user.role !== 'admin') {
+                return res.status(403).json({ success: false, message: 'Admin access required' });
+            }
+            next();
+        } catch (err) {
+            res.status(500).json({ success: false, message: err.message });
         }
-
-        const user = await User.findById(req.user.id);
-        
-        if (!user || user.role !== 'admin') {
-            return res.status(403).json({ success: false, message: 'Forbidden: Admin access required' });
-        }
-
-        next();
-    } catch (err) {
-        console.error('[AdminMiddleware] Error:', err);
-        res.status(500).json({ success: false, message: 'Server error verifying admin status' });
-    }
+    });
 };
 
 module.exports = adminMiddleware;

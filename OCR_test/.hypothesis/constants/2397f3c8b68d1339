@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\torchvision\datasets\svhn.py
-# hypothesis_version: 6.151.10
-
-['Split: {split}', 'X', 'extra', 'extra_32x32.mat', 'split', 'test', 'test_32x32.mat', 'train', 'train_32x32.mat', 'y']

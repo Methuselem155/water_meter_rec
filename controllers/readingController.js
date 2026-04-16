@@ -3,6 +3,7 @@ const Meter = require('../models/Meter');
 const Bill = require('../models/Bill');
 const { runOcrJob } = require('../workers/ocrWorker');
 const ocrService = require('../services/ocrService');
+const { processDisplay, processSerial } = ocrService;
 const validationService = require('../services/validationService');
 const billingService = require('../services/billingService');
 const path = require('path');
@@ -41,8 +42,10 @@ exports.getReadingById = async (req, res) => {
             });
         }
 
-        // Ensure the reading belongs to the authenticated user's meter
-        if (reading.meterId.userId._id.toString() !== req.user.id) {
+        // Ensure the reading belongs to the authenticated user's meter.
+        // Guard against populate failure (deleted user / broken reference).
+        const meterUserId = reading.meterId?.userId?._id;
+        if (!meterUserId || meterUserId.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Unauthorized access to reading',
@@ -59,7 +62,10 @@ exports.getReadingById = async (req, res) => {
             data: {
                 reading: {
                     ...readingObj,
-                    extracted: readingObj.ocrRawText ?? null
+                    extracted:         readingObj.ocrRawText     ?? null,
+                    integer_reading:   readingObj.integerReading ?? null,
+                    decimal_reading:   readingObj.decimalReading ?? null,
+                    decimal_estimated: true,
                 },
                 bill: bill || null
             }
@@ -116,8 +122,8 @@ exports.uploadReading = async (req, res) => {
 
         const meter = activeMeters[0];
         
-        // Store relative path from project root (e.g. OCR_test/filename.jpg)
-        const imagePath = 'OCR_test/' + path.basename(req.file.path);
+        // Store relative path from project root (e.g. ocr_model/filename.jpg)
+        const imagePath = 'ocr_model/' + path.basename(req.file.path);
 
         console.log(`[Upload] Image stored in OCR_test: ${imagePath}`);
 
@@ -151,9 +157,9 @@ exports.uploadReading = async (req, res) => {
         console.log(`[Upload] Reading saved successfully with ID: ${savedReading._id}`);
         console.log(`[Upload] Reading data: meterId=${savedReading.meterId}, imagePath=${savedReading.imagePath}, validationStatus=${savedReading.validationStatus}`);
 
-        // Default: await OCR so mobile app gets the reading value immediately.
-        // Pass ?awaitOcr=false to opt into async background processing instead.
-        const awaitOcr = req.query.awaitOcr !== 'false';
+        // Default: background OCR so the mobile app does not time out waiting for Claude Vision.
+        // Pass ?awaitOcr=true to opt into synchronous processing (useful for testing).
+        const awaitOcr = req.query.awaitOcr === 'true';
 
         if (awaitOcr) {
             console.log(`[Upload] Attempting synchronous OCR for reading ${savedReading._id}`);
@@ -173,10 +179,12 @@ exports.uploadReading = async (req, res) => {
                 success: true,
                 message: 'Reading uploaded and processed.',
                 data: {
-                    // Shape matches GET /api/readings so Flutter Reading.fromJson works identically
                     reading: {
                         ...fullReadingObj,
-                        extracted: fullReadingObj.ocrRawText ?? null
+                        extracted:         fullReadingObj.ocrRawText     ?? null,
+                        integer_reading:   fullReadingObj.integerReading ?? null,
+                        decimal_reading:   fullReadingObj.decimalReading ?? null,
+                        decimal_estimated: true,
                     }
                 }
             });
@@ -307,32 +315,43 @@ exports.scanReading = async (req, res) => {
         }
         const meter = activeMeters[0];
 
-        // Run OCR on the display crop — digits only
         const displayPath = displayFile.path;
-        console.log(`[Scan] Running OCR on display crop: ${displayPath}`);
-        const displayResult = await ocrService.processImage(displayPath, 'display');
 
-        // Run OCR on serial crop if provided
-        let serialResult = { serialNumberExtracted: null };
+        // First crop  → python ocr_model/ocr.py --image <path> --meter --no-boxes
+        // Second crop → python ocr_model/ocr.py --image <path> --serial --no-boxes
+        // Run in parallel when both crops are present for speed.
+        console.log(`[Scan] Running --meter OCR on display crop: ${displayPath}`);
+
+        let displayResult, serialResult;
+
         if (serialFile) {
-            console.log(`[Scan] Running OCR on serial crop: ${serialFile.path}`);
-            serialResult = await ocrService.processImage(serialFile.path, 'serial');
+            console.log(`[Scan] Running --serial OCR on serial crop: ${serialFile.path}`);
+            [displayResult, serialResult] = await Promise.all([
+                processDisplay(displayPath),
+                processSerial(serialFile.path),
+            ]);
+        } else {
+            displayResult = await processDisplay(displayPath);
+            serialResult  = { serialNumberExtracted: null, confidence: 0, rawText: '' };
         }
+
         console.log(`[Scan] display OCR: value=${displayResult.readingValue} conf=${displayResult.confidence}`);
-        console.log(`[Scan] serial OCR: serial=${serialResult.serialNumberExtracted}`);
+        console.log(`[Scan] serial OCR:  serial=${serialResult.serialNumberExtracted}`);
 
-        // Store the display image as the reading image (in OCR_test/)
-        const imagePath = 'OCR_test/' + path.basename(displayFile.path);
+        // Store the display image as the reading image (in ocr_model/)
+        const imagePath = 'ocr_model/' + path.basename(displayFile.path);
 
-        // Create reading
+        // Create reading — persist integer/decimal split fields for the mobile display
         const newReading = new Reading({
             meterId: meter._id,
             imagePath,
-            readingValue: displayResult.readingValue,
+            readingValue:          displayResult.readingValue,
+            integerReading:        displayResult.integerPart   || null,
+            decimalReading:        displayResult.fractionPart  || null,
             serialNumberExtracted: serialResult.serialNumberExtracted,
-            confidence: displayResult.confidence,
-            ocrRawText: displayResult.rawText || null,
-            ocrMethod: 'easyocr-crop',
+            confidence:            displayResult.confidence,
+            ocrRawText:            displayResult.rawText || null,
+            ocrMethod: 'claude-vision',
             validationStatus: 'pending',
             submissionTime: new Date(),
             billingPeriod: getBillingPeriod()
@@ -345,7 +364,7 @@ exports.scanReading = async (req, res) => {
             await billingService.generateBill(newReading._id);
         }
 
-        // Return full reading
+        // Return full reading with snake_case split fields Flutter expects
         const fullReading = await Reading.findById(newReading._id).populate({
             path: 'meterId',
             select: 'serialNumber status userId',
@@ -357,7 +376,13 @@ exports.scanReading = async (req, res) => {
             success: true,
             message: 'Reading scanned and processed.',
             data: {
-                reading: { ...obj, extracted: obj.ocrRawText ?? null }
+                reading: {
+                    ...obj,
+                    extracted:        obj.ocrRawText      ?? null,
+                    integer_reading:  obj.integerReading  ?? null,
+                    decimal_reading:  obj.decimalReading  ?? null,
+                    decimal_estimated: true,
+                }
             }
         });
 

@@ -57,11 +57,29 @@ const billSchema = new mongoose.Schema({
         default: Date.now,
         index: true
     },
+    dueDate: {
+        type: Date,
+        default: null,
+        index: true
+    },
     status: {
         type: String,
-        enum: ['draft', 'final', 'paid'],
-        default: 'draft',
+        enum: ['unpaid', 'paid', 'overdue'],
+        default: 'unpaid',
         index: true
+    },
+    paidAt: {
+        type: Date,
+        default: null
+    },
+    paymentReference: {
+        type: String,
+        default: null
+    },
+    paymentMethod: {
+        type: String,
+        enum: ['momo', 'bank', 'cash'],
+        default: null
     }
 });
 

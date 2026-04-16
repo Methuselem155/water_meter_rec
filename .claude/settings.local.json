@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze:*)",
+      "Bash(flutter pub:*)",
+      "Bash(grep -E \"\\\\.\\(js|py|json\\)$\")",
+      "Bash(ipconfig)",
+      "Bash(findstr /i \"IPv4\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'ocr_model'\\); from serial_extractor import SerialExtractor; print\\('OK'\\)\")",
+      "Bash(python ocr_model/ocr.py --help)",
+      "Bash(dir \"C:\\\\Users\\\\Methuselem\\\\water-meter\\\\ocr_model\" /b)",
+      "Bash(findstr /i \".jpg .jpeg .png\")",
+      "Bash(python ocr.py --image \"69da26423e00aca59a7e42d8-1775909764286-929565954.jpg\" --meter --no-boxes)",
+      "Bash(python ocr.py --image \"69da26423e00aca59a7e42d8-1775909764334-760099784.jpg\" --serial --no-boxes)",
+      "Bash(node -e ':*)",
+      "Read(//tmp/**)",
+      "Bash(python -c ':*)",
+      "Bash(python ocr.py --image \"69dd65a130e0cbb900bec607-1776122099277-192730125.jpg\" --meter --no-boxes)",
+      "Bash(python ocr.py --image test_meter_01037215.jpg --meter --no-boxes)",
+      "Bash(python -c \"import sys; [print\\(l.encode\\('ascii','replace'\\).decode\\(\\)\\) for l in sys.stdin]\")",
+      "Bash(python ocr.py --image \"69dd65a130e0cbb900bec607-1776117428436-889468340.jpg\" --meter --no-boxes)",
+      "Bash(python ocr.py --image \"69dd65a130e0cbb900bec607-1776117256218-864472355.jpg\" --meter --no-boxes)",
+      "Bash(python app.py)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(python app.py --port 7861)",
+      "Bash(curl -s http://127.0.0.1:7861/)",
+      "Bash(grep -E \"^/c/Users/Methuselem/water-meter/[^/]+\\\\.\\(js|json\\)$\")",
+      "Bash(python -m pip install anthropic --quiet)",
+      "Bash(python -c \"import anthropic; print\\('anthropic', anthropic.__version__\\)\")",
+      "Bash(python -c \"from python_ocr import extract_reading, ocr_display, ocr_serial, ocr_auto; print\\('imports OK'\\)\")",
+      "Bash(python -c \"import anthropic; print\\('OK', anthropic.__version__\\)\")",
+      "Bash(ls ocr_model/*.jpg ocr_model/*.png)",
+      "Bash(python -c \"import anthropic; print\\('anthropic OK'\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\('KEY SET:', !!process.env.ANTHROPIC_API_KEY, 'len:', \\(process.env.ANTHROPIC_API_KEY||''\\).length\\)\")",
+      "Bash(node -e \"const r = require\\('dotenv'\\).config\\(\\); console.log\\('error:', r.error\\); console.log\\('parsed keys:', Object.keys\\(r.parsed||{}\\)\\)\")",
+      "Bash(node -e \"const r = require\\('dotenv'\\).config\\(\\); console.log\\('ANTHROPIC_API_KEY value length:', \\(r.parsed?.ANTHROPIC_API_KEY||''\\).length\\); console.log\\('first 20 chars:', \\(r.parsed?.ANTHROPIC_API_KEY||''\\).substring\\(0,20\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\('KEY SET:', !!process.env.ANTHROPIC_API_KEY, 'len:', process.env.ANTHROPIC_API_KEY?.length\\)\")",
+      "Bash(node -e \"console.log\\('BEFORE dotenv - ANTHROPIC_API_KEY:', JSON.stringify\\(process.env.ANTHROPIC_API_KEY\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({override:true}\\); const {spawnSync} = require\\('child_process'\\); const r = spawnSync\\('python', ['python_ocr.py', 'ocr_model/69dd65a130e0cbb900bec607-1776342132994-928801483.jpg', '--mode', 'auto'], {env: process.env, encoding:'utf8'}\\); console.log\\('EXIT:', r.status\\); console.log\\('STDOUT:', r.stdout\\); console.log\\('STDERR:', r.stderr?.slice\\(0,500\\)\\);\")"
+    ]
+  }
+}

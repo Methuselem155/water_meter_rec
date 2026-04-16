@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\PIL\_typing.py
-# hypothesis_version: 6.151.10
-
-['Buffer', 'IntegralLike', 'StrOrBytesPath', 'SupportsRead', 'TypeGuard', '_T_co']

@@ -70,6 +70,7 @@ class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
               ? reading.extracted
               : reading.readingValue?.toString();
           final dateFormat = DateFormat('MMMM dd, yyyy - HH:mm');
+          final primaryColor = Theme.of(context).colorScheme.primary;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
@@ -82,15 +83,13 @@ class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       children: [
-                        Text(
-                          displayText != null
-                              ? '$displayText m³'
-                              : 'Processing OCR...',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
+                        _MeterReadingDisplay(
+                          integerReading: reading.integerReading,
+                          decimalReading: reading.decimalReading,
+                          fallbackText: displayText,
+                          primaryColor: primaryColor,
+                          baseStyle: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         _buildStatusChip(reading.validationStatus),
@@ -230,6 +229,55 @@ class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
     final match = RegExp(r'\d{3,}').firstMatch(dense);
     if (match == null) return null;
     return num.tryParse(match.group(0)!);
+  }
+}
+
+/// Shows the meter reading with integer part in [primaryColor] and decimal
+/// part in red. Falls back to a plain [fallbackText] display when split fields
+/// are not available (e.g. older readings stored before the split OCR change).
+class _MeterReadingDisplay extends StatelessWidget {
+  final String? integerReading;
+  final String? decimalReading;
+  final String? fallbackText;
+  final Color primaryColor;
+  final TextStyle? baseStyle;
+
+  const _MeterReadingDisplay({
+    required this.integerReading,
+    required this.decimalReading,
+    required this.fallbackText,
+    required this.primaryColor,
+    required this.baseStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (integerReading == null) {
+      // Fallback: no split data — render as plain single-color text
+      return Text(
+        fallbackText != null ? '$fallbackText m³' : 'Processing OCR...',
+        style: baseStyle?.copyWith(color: primaryColor),
+      );
+    }
+
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(
+        style: baseStyle,
+        children: [
+          TextSpan(
+            text: integerReading,
+            style: TextStyle(color: primaryColor),
+          ),
+          TextSpan(text: '.', style: TextStyle(color: primaryColor)),
+          TextSpan(
+            text: decimalReading ?? '---',
+            style: const TextStyle(color: Colors.red),
+          ),
+          TextSpan(text: ' m³', style: TextStyle(color: primaryColor)),
+        ],
+      ),
+    );
   }
 }
 

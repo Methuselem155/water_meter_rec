@@ -27,9 +27,18 @@ const readingSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Split OCR output — integer region (dark/black bg) and decimal region (red bg)
+    integerReading: {
+        type: String,
+        default: null
+    },
+    decimalReading: {
+        type: String,
+        default: null
+    },
     ocrMethod: {
         type: String,
-        enum: ['python-tesseract', 'easyocr', 'easyocr-crop', 'tesseract-fallback', 'tesseract.js', 'manual', 'failed', null],
+        enum: ['claude-vision', 'python-tesseract', 'easyocr', 'easyocr-crop', 'tesseract-fallback', 'tesseract.js', 'manual', 'failed', null],
         default: null,
         description: 'Which OCR method was used to extract the reading'
     },

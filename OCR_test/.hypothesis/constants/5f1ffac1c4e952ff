@@ -1,4 +1,0 @@
-# file: C:\Users\Methuselem\AppData\Roaming\Python\Python313\site-packages\skimage\io\manage_plugins.py
-# hypothesis_version: 6.151.10
-
-['*.ini', ',', '0.25', '0.27', '_', '_app_show', '_available_plugins', '_plugins', 'all', 'call_plugin', 'ignore', 'imageio', 'imread', 'imread_collection', 'imsave', 'imshow', 'imshow_collection', 'matplotlib', 'pil', 'plugin', 'plugin_info', 'plugin_order', 'provides', 'reset_plugins', 'skimage', 'skimage.io._plugins.', 'use_plugin']

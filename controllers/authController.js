@@ -72,31 +72,25 @@ exports.register = async (req, res) => {
             }
         };
 
-        // Sign JWT
+        // Sign JWT synchronously — avoids unhandled throw inside a callback
         const jwtSecret = process.env.JWT_SECRET;
         if (!jwtSecret) throw new Error('JWT_SECRET is not configured');
-        jwt.sign(
-            payload,
-            jwtSecret,
-            { expiresIn: process.env.JWT_EXPIRE || '7d' }, // typically expires in 7 days
-            (err, token) => {
-                if (err) throw err;
-                res.status(201).json({
-                    success: true,
-                    message: 'User registered successfully',
-                    data: {
-                        token,
-                        user: {
-                            id: user.id,
-                            accountNumber: user.accountNumber,
-                            fullName: user.fullName,
-                            phoneNumber: user.phoneNumber,
-                            category: user.category
-                        }
-                    }
-                });
+        const token = jwt.sign(payload, jwtSecret, { expiresIn: process.env.JWT_EXPIRE || '7d' });
+
+        return res.status(201).json({
+            success: true,
+            message: 'User registered successfully',
+            data: {
+                token,
+                user: {
+                    id: user.id,
+                    accountNumber: user.accountNumber,
+                    fullName: user.fullName,
+                    phoneNumber: user.phoneNumber,
+                    category: user.category
+                }
             }
-        );
+        });
     } catch (err) {
         console.error(err.message);
         res.status(500).json({
@@ -156,31 +150,25 @@ exports.login = async (req, res) => {
             }
         };
 
-        // Sign JWT
+        // Sign JWT synchronously — avoids unhandled throw inside a callback
         const jwtSecret = process.env.JWT_SECRET;
         if (!jwtSecret) throw new Error('JWT_SECRET is not configured');
-        jwt.sign(
-            payload,
-            jwtSecret,
-            { expiresIn: process.env.JWT_EXPIRE || '7d' },
-            (err, token) => {
-                if (err) throw err;
-                res.json({
-                    success: true,
-                    message: 'Login successful',
-                    data: {
-                        token,
-                        user: {
-                            id: user.id,
-                            accountNumber: user.accountNumber,
-                            fullName: user.fullName,
-                            phoneNumber: user.phoneNumber,
-                            category: user.category
-                        }
-                    }
-                });
+        const token = jwt.sign(payload, jwtSecret, { expiresIn: process.env.JWT_EXPIRE || '7d' });
+
+        return res.json({
+            success: true,
+            message: 'Login successful',
+            data: {
+                token,
+                user: {
+                    id: user.id,
+                    accountNumber: user.accountNumber,
+                    fullName: user.fullName,
+                    phoneNumber: user.phoneNumber,
+                    category: user.category
+                }
             }
-        );
+        });
     } catch (err) {
         console.error(err.message);
         res.status(500).json({

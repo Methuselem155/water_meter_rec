@@ -2,8 +2,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Save all uploaded crops to OCR_test/ folder
-const uploadDir = path.join(__dirname, '..', 'OCR_test');
+// Save all uploaded crops to ocr_model/ folder
+const uploadDir = path.join(__dirname, '..', 'ocr_model');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }

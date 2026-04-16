@@ -12,6 +12,10 @@ class Reading extends Equatable {
   final String validationStatus;
   final DateTime submissionTime;
   final String? billingPeriod;
+  // Split OCR fields — integer region (dark bg) and decimal region (red bg)
+  final String? integerReading;
+  final String? decimalReading;
+  final bool decimalEstimated;
 
   const Reading({
     required this.id,
@@ -24,6 +28,9 @@ class Reading extends Equatable {
     required this.validationStatus,
     required this.submissionTime,
     this.billingPeriod,
+    this.integerReading,
+    this.decimalReading,
+    this.decimalEstimated = false,
   });
 
   factory Reading.fromJson(Map<String, dynamic> json) {
@@ -59,13 +66,17 @@ class Reading extends Equatable {
           ? DateTime.parse(json['submissionTime'])
           : DateTime.now(),
       billingPeriod: json['billingPeriod'],
+      integerReading: json['integer_reading'] as String?,
+      decimalReading: json['decimal_reading'] as String?,
+      decimalEstimated: json['decimal_estimated'] as bool? ?? false,
     );
   }
 
   @override
   List<Object?> get props => [
         id, meterId, imagePath, serialNumberExtracted, extracted, readingValue,
-        confidence, validationStatus, submissionTime, billingPeriod
+        confidence, validationStatus, submissionTime, billingPeriod,
+        integerReading, decimalReading, decimalEstimated,
       ];
 }
 

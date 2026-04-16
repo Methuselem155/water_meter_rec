@@ -1,26 +1,26 @@
 const express = require('express');
 const router = express.Router();
-const adminController = require('../controllers/adminController');
-const authMiddleware = require('../middleware/authMiddleware');
 const adminMiddleware = require('../middleware/adminMiddleware');
+const adminController = require('../controllers/adminController');
 
-// All routes require authentication and admin role
-router.use(authMiddleware, adminMiddleware);
+router.get('/stats',        adminMiddleware, adminController.getStats);
+router.get('/users',        adminMiddleware, adminController.getUsers);
+router.post('/users',       adminMiddleware, adminController.createUser);
+router.delete('/users/:id', adminMiddleware, adminController.deleteUser);
+router.post('/reset',       adminMiddleware, adminController.resetSystem);
 
-// Dashboard stats
-router.get('/stats', adminController.getDashboardStats);
+// Meter routes
+router.get('/meters', adminMiddleware, adminController.getMeters);
 
-// Users
-router.get('/users', adminController.getAllUsers);
+// Reading routes
+router.get('/readings',            adminMiddleware, adminController.getReadings);
+router.put('/readings/:id/status', adminMiddleware, adminController.updateReadingStatus);
+router.delete('/readings/:id',     adminMiddleware, adminController.deleteReading);
 
-// Meters
-router.get('/meters', adminController.getAllMeters);
-
-// Readings
-router.get('/readings', adminController.getAllReadings);
-router.put('/readings/:id/status', adminController.updateReadingStatus);
-
-// Bills
-router.get('/bills', adminController.getAllBills);
+// Bill routes
+router.get('/bills/summary',               adminMiddleware, adminController.getBillsSummary);
+router.patch('/bills/mark-overdue',        adminMiddleware, adminController.markOverdue);
+router.get('/bills',                       adminMiddleware, adminController.getAdminBills);
+router.patch('/bills/:id/confirm-payment', adminMiddleware, adminController.confirmPayment);
 
 module.exports = router;

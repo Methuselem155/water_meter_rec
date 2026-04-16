@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Gradio UI",
+      "runtimeExecutable": "C:/Python313/python.exe",
+      "runtimeArgs": ["app.py", "--port", "7860"],
+      "port": 7860
+    },
+    {
+      "name": "OCR CLI (smoke test)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["test_ocr.py"],
+      "port": 0
+    }
+  ]
+}
