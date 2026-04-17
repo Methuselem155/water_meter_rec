@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/theme.dart';
 import 'core/constants.dart';
@@ -13,21 +14,21 @@ import 'data/local/pending_reading.dart';
 import 'providers/history_provider.dart';
 
 void main() async {
-  // Ensure flutter gets initialized before running any async platform code.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Hive storage for offline capabilities (works on web & mobile)
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+  ));
+
   await Hive.initFlutter();
 
-  // Register adapter regardless of platform
   if (!Hive.isAdapterRegistered(0)) {
     Hive.registerAdapter(PendingReadingAdapter());
   }
 
-  // Open the primary box
   await Hive.openBox<PendingReading>(Constants.pendingReadingsBox);
 
-  // Initialize Background Service (conditional under the hood)
   backgroundService.initialize(callbackDispatcher);
 
   runApp(const ProviderScope(child: WaterMeterApp()));
@@ -39,10 +40,10 @@ class WaterMeterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Water Meter App',
+      title: 'Water Meter System',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system, // Respects device settings
+      themeMode: ThemeMode.dark,
       home: const SplashScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -63,18 +64,32 @@ class MainScreen extends ConsumerWidget {
     final currentIndex = ref.watch(activeTabProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Water Meter System')),
+      // Each screen manages its own header — no global AppBar
       body: IndexedStack(
         index: currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: (index) => ref.read(activeTabProvider.notifier).state = index,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: 'Capture'),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: currentIndex,
+        onDestinationSelected: (index) =>
+            ref.read(activeTabProvider.notifier).state = index,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.camera_alt_outlined),
+            selectedIcon: Icon(Icons.camera_alt_rounded),
+            label: 'Capture',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history_rounded),
+            label: 'History',
+          ),
         ],
       ),
     );

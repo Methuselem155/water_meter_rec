@@ -11,11 +11,11 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../providers/camera_provider.dart';
 import 'confirmation_screen.dart';
 
-// The green frame covers the middle 50% height and 84% width of the preview.
-// These ratios must match _GuideFramePainter exactly.
-const double _frameMarginRatio = 0.08; // left/right margin = 8% of width
-const double _frameTopRatio    = 0.25; // top of frame   = 25% of height
-const double _frameBottomRatio = 0.75; // bottom of frame = 75% of height
+// Frame ratios — must match _GuideFramePainter exactly.
+const double _frameMarginRatio = 0.08;
+const double _frameTopRatio    = 0.25;
+const double _frameBottomRatio = 0.75;
+const double _cornerLength     = 28.0; // px length of each corner bracket arm
 
 class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
@@ -28,8 +28,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     with WidgetsBindingObserver {
   bool _isPermissionGranted = false;
   bool _isCropping = false;
+  FlashMode _flashMode = FlashMode.off;
 
-  // Key on the Stack so we can read the preview render size
   final GlobalKey _previewKey = GlobalKey();
 
   @override
@@ -74,26 +74,28 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Camera permission is required to capture water meter readings.'),
+          content: Text('Camera permission is required to capture meter readings.'),
         ),
       );
     }
   }
 
-  /// Crop the saved image to the green frame area.
-  /// The frame ratios are applied to the actual image dimensions.
+  void _toggleFlash() {
+    final controller = ref.read(cameraProvider).controller;
+    if (controller == null) return;
+    final next = _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
+    controller.setFlashMode(next);
+    setState(() => _flashMode = next);
+  }
+
   Future<String> _cropToFrame(String imagePath, CameraController controller) async {
     final bytes = await File(imagePath).readAsBytes();
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return imagePath;
 
-    // Camera images may be rotated — img.decodeImage handles EXIF automatically
     final iw = decoded.width;
     final ih = decoded.height;
 
-    // The camera preview on Android is usually portrait with sensor rotated.
-    // We work in the image's own coordinate space after decode (EXIF applied).
-    // Map the frame ratios directly onto image pixels.
     final x = (iw * _frameMarginRatio).round();
     final y = (ih * _frameTopRatio).round();
     final w = (iw * (1 - 2 * _frameMarginRatio)).round();
@@ -121,9 +123,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       if (!mounted) return;
 
       setState(() => _isCropping = true);
-
       final croppedPath = await _cropToFrame(image.path, controller);
-
       if (!mounted) return;
       setState(() => _isCropping = false);
 
@@ -148,92 +148,417 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   @override
   Widget build(BuildContext context) {
     if (!_isPermissionGranted) {
-      return const Center(
-        child: Text('Please grant camera permissions manually from device settings.'),
-      );
+      return _PermissionDeniedView(onRetry: _requestPermissions);
     }
 
     final cameraState = ref.watch(cameraProvider);
 
     if (cameraState.error != null) {
-      return Center(
-        child: Text(cameraState.error!, style: const TextStyle(color: Colors.red)),
-      );
+      return _ErrorView(message: cameraState.error!);
     }
 
     if (!cameraState.isInitialized ||
         cameraState.controller == null ||
         cameraState.isDisposed ||
         !cameraState.controller!.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
+      return const _LoadingView();
     }
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
         key: _previewKey,
         fit: StackFit.expand,
         children: [
+          // Live preview
           CameraPreview(cameraState.controller!),
+
+          // Dimmed overlay + corner brackets
           CustomPaint(painter: _GuideFramePainter()),
-          const Positioned(
-            top: 50,
-            left: 20,
-            right: 20,
-            child: Text(
-              'Fit the meter inside the frame — the frame area will be sent for reading.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                shadows: [
-                  Shadow(blurRadius: 10, color: Colors.black54, offset: Offset(2, 2)),
+
+          // Top controls bar
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _TopBar(
+              flashMode: _flashMode,
+              onFlashToggle: _toggleFlash,
+            ),
+          ),
+
+          // Instruction + capture button — anchored together from the bottom
+          if (!_isCropping)
+            Positioned(
+              bottom: MediaQuery.of(context).padding.bottom + 24,
+              left: 24,
+              right: 24,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _InstructionLabel(),
+                  const SizedBox(height: 20),
+                  Center(child: _CaptureButton(onTap: _takePicture)),
                 ],
               ),
             ),
-          ),
+
+          // Processing overlay
           if (_isCropping)
-            Container(
-              color: Colors.black54,
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.greenAccent),
-                    SizedBox(height: 12),
-                    Text('Processing...', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-            ),
-          if (!_isCropping)
-            Positioned(
-              bottom: 30,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: FloatingActionButton(
-                  onPressed: _takePicture,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  child: const Icon(Icons.camera_alt, size: 30, color: Colors.white),
-                ),
-              ),
-            ),
+            const _ProcessingOverlay(),
         ],
       ),
     );
   }
 }
 
-// Guide frame — ratios must match _frameMarginRatio / _frameTopRatio / _frameBottomRatio
+// ── Sub-widgets ──────────────────────────────────────────────────────────────
+
+class _TopBar extends StatelessWidget {
+  final FlashMode flashMode;
+  final VoidCallback onFlashToggle;
+
+  const _TopBar({required this.flashMode, required this.onFlashToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.black87, Colors.transparent],
+        ),
+      ),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        left: 8,
+        right: 8,
+        bottom: 16,
+      ),
+      child: Row(
+        children: [
+          // Back button
+          _IconCircleButton(
+            icon: Icons.arrow_back_ios_new_rounded,
+            onTap: () => Navigator.maybePop(context),
+          ),
+          const Spacer(),
+          // Screen title
+          const Text(
+            'Scan Meter',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const Spacer(),
+          // Flash toggle
+          _IconCircleButton(
+            icon: flashMode == FlashMode.torch
+                ? Icons.flash_on_rounded
+                : Icons.flash_off_rounded,
+            onTap: onFlashToggle,
+            active: flashMode == FlashMode.torch,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IconCircleButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+
+  const _IconCircleButton({
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: active
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.85)
+              : Colors.black38,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+}
+
+class _InstructionLabel extends StatelessWidget {
+  const _InstructionLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.center_focus_strong_rounded,
+            color: Theme.of(context).colorScheme.primary,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          const Flexible(
+            child: Text(
+              'Align the meter display inside the frame',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CaptureButton extends StatefulWidget {
+  final VoidCallback? onTap;
+
+  const _CaptureButton({required this.onTap});
+
+  @override
+  State<_CaptureButton> createState() => _CaptureButtonState();
+}
+
+class _CaptureButtonState extends State<_CaptureButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+      lowerBound: 0.9,
+      upperBound: 1.0,
+      value: 1.0,
+    );
+    _scale = _controller;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(_) => _controller.reverse();
+  void _onTapUp(_) {
+    _controller.forward();
+    widget.onTap?.call();
+  }
+  void _onTapCancel() => _controller.forward();
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      child: ScaleTransition(
+        scale: _scale,
+        child: Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3.5),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: Container(
+              decoration: BoxDecoration(
+                color: primary,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: primary.withValues(alpha: 0.4),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.camera_alt_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProcessingOverlay extends StatelessWidget {
+  const _ProcessingOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.7),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              color: Theme.of(context).colorScheme.primary,
+              strokeWidth: 3,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Processing image…',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingView extends StatelessWidget {
+  const _LoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Starting camera…',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+
+  const _ErrorView({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline_rounded,
+                  color: Theme.of(context).colorScheme.error, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PermissionDeniedView extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _PermissionDeniedView({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.camera_alt_outlined,
+                  color: Theme.of(context).colorScheme.primary, size: 56),
+              const SizedBox(height: 20),
+              const Text(
+                'Camera Access Required',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Please grant camera permission to scan water meter readings.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+              const SizedBox(height: 28),
+              ElevatedButton(
+                onPressed: onRetry,
+                child: const Text('Grant Permission'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Guide Frame Painter ───────────────────────────────────────────────────────
+
 class _GuideFramePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Dim everything outside the frame
-    final dimPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.45)
-      ..style = PaintingStyle.fill;
-
     final frame = Rect.fromLTRB(
       size.width  * _frameMarginRatio,
       size.height * _frameTopRatio,
@@ -241,18 +566,47 @@ class _GuideFramePainter extends CustomPainter {
       size.height * _frameBottomRatio,
     );
 
+    // Dim the outside of the frame
+    final dimPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.55)
+      ..style = PaintingStyle.fill;
+
     final full = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
     final hole = Path()..addRect(frame);
     canvas.drawPath(Path.combine(PathOperation.difference, full, hole), dimPaint);
 
-    // Green border
-    canvas.drawRect(
-      frame,
-      Paint()
-        ..color = Colors.greenAccent.withValues(alpha: 0.9)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5,
-    );
+    // Corner bracket paint
+    final bracketPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+
+    _drawCornerBrackets(canvas, frame, bracketPaint);
+  }
+
+  void _drawCornerBrackets(Canvas canvas, Rect frame, Paint paint) {
+    final l = frame.left;
+    final t = frame.top;
+    final r = frame.right;
+    final b = frame.bottom;
+    const c = _cornerLength;
+
+    // Top-left
+    canvas.drawLine(Offset(l, t + c), Offset(l, t), paint);
+    canvas.drawLine(Offset(l, t), Offset(l + c, t), paint);
+
+    // Top-right
+    canvas.drawLine(Offset(r - c, t), Offset(r, t), paint);
+    canvas.drawLine(Offset(r, t), Offset(r, t + c), paint);
+
+    // Bottom-left
+    canvas.drawLine(Offset(l, b - c), Offset(l, b), paint);
+    canvas.drawLine(Offset(l, b), Offset(l + c, b), paint);
+
+    // Bottom-right
+    canvas.drawLine(Offset(r - c, b), Offset(r, b), paint);
+    canvas.drawLine(Offset(r, b), Offset(r, b - c), paint);
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme.dart';
 import '../../../repositories/reading_repository.dart';
 import '../../../models/reading.dart';
 import '../../../core/constants.dart';
@@ -11,21 +12,26 @@ class ReadingDetailScreen extends ConsumerStatefulWidget {
   const ReadingDetailScreen({super.key, required this.readingId});
 
   @override
-  ConsumerState<ReadingDetailScreen> createState() => _ReadingDetailScreenState();
+  ConsumerState<ReadingDetailScreen> createState() =>
+      _ReadingDetailScreenState();
 }
 
-class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
+class _ReadingDetailScreenState
+    extends ConsumerState<ReadingDetailScreen> {
   late Future<Reading> _readingFuture;
 
   @override
   void initState() {
     super.initState();
-    _readingFuture = ref.read(readingRepositoryProvider).getReadingById(widget.readingId);
+    _readingFuture = ref
+        .read(readingRepositoryProvider)
+        .getReadingById(widget.readingId);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Reading Details')),
       body: FutureBuilder<Reading>(
         future: _readingFuture,
@@ -35,155 +41,68 @@ class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Failed to load reading: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => setState(() {
-                        _readingFuture = ref
-                            .read(readingRepositoryProvider)
-                            .getReadingById(widget.readingId);
-                      }),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
+            return _ErrorBody(
+              message: '${snapshot.error}',
+              onRetry: () => setState(() {
+                _readingFuture = ref
+                    .read(readingRepositoryProvider)
+                    .getReadingById(widget.readingId);
+              }),
             );
           }
 
           final reading = snapshot.data!;
-          // Use rawText (exact OCR string) to preserve leading zeros
-          // Fall back to readingValue if rawText not available
-          final String? displayText = (reading.extracted != null && reading.extracted!.isNotEmpty)
-              ? reading.extracted
-              : reading.readingValue?.toString();
-          final dateFormat = DateFormat('MMMM dd, yyyy - HH:mm');
-          final primaryColor = Theme.of(context).colorScheme.primary;
+          final display =
+              (reading.extracted?.isNotEmpty == true)
+                  ? reading.extracted
+                  : reading.readingValue?.toString();
+          final dateFmt = DateFormat('MMMM dd, yyyy · HH:mm');
+          final primary = Theme.of(context).colorScheme.primary;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Core Header Specs
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        _MeterReadingDisplay(
-                          integerReading: reading.integerReading,
-                          decimalReading: reading.decimalReading,
-                          fallbackText: displayText,
-                          primaryColor: primaryColor,
-                          baseStyle: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildStatusChip(reading.validationStatus),
-                        const SizedBox(height: 16),
-                        const Divider(),
-                        _DetailRow(
-                          label: 'Submitted Date',
-                          value: dateFormat.format(reading.submissionTime),
-                        ),
-                        _DetailRow(
-                          label: 'Identified Serial',
-                          value: reading.serialNumberExtracted ?? 'Scanning...',
-                        ),
-                        if (reading.confidence != null)
-                          _DetailRow(
-                            label: 'OCR Confidence',
-                            value:
-                                '${(reading.confidence! * 100).toStringAsFixed(1)}%',
-                            valueColor: reading.confidence! > 0.8
-                                ? Colors.green
-                                : (reading.confidence! > 0.5
-                                      ? Colors.orange
-                                      : Colors.red),
-                          ),
-                      ],
-                    ),
+                // ── Reading hero ──────────────────────────────────────
+                _ReadingHero(
+                  reading: reading,
+                  displayText: display,
+                  primaryColor: primary,
+                ),
+                const SizedBox(height: 14),
+
+                // ── Details card ──────────────────────────────────────
+                _SectionCard(
+                  title: 'Reading Info',
+                  icon: Icons.info_outline_rounded,
+                  child: Column(
+                    children: [
+                      _Row(
+                        label: 'Submitted',
+                        value: dateFmt
+                            .format(reading.submissionTime),
+                      ),
+                      _Row(
+                        label: 'Serial Number',
+                        value: reading.serialNumberExtracted ??
+                            'Scanning…',
+                      ),
+                      if (reading.confidence != null)
+                        _ConfidenceRow(
+                            confidence: reading.confidence!.toDouble()),
+                    ],
                   ),
                 ),
+                const SizedBox(height: 14),
 
-                const SizedBox(height: 24),
-
-                // 2. Photo Evidence Viewer
-                const Text(
-                  'Captured Image Evidence',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                // ── Image evidence ────────────────────────────────────
+                _SectionCard(
+                  title: 'Captured Image',
+                  icon: Icons.photo_camera_outlined,
+                  child: _ImageEvidence(
+                      imagePath: reading.imagePath),
                 ),
-                const SizedBox(height: 12),
-                if (reading.imagePath != null && reading.imagePath!.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      // Construct proper HTTP URL from relative path
-                      '${Constants.baseUrl.replaceAll('/api', '')}/${reading.imagePath!}',
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const SizedBox(
-                          height: 200,
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          height: 200,
-                          color: Colors.grey.shade200,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.broken_image,
-                                  size: 48,
-                                  color: Colors.grey,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Failed to load image',
-                                  style: TextStyle(color: Colors.grey.shade600),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'URL: ${reading.imagePath}',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  )
-                else
-                  Container(
-                    height: 150,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: const Center(child: Text('Image data unavailable')),
-                  ),
               ],
             ),
           );
@@ -191,116 +110,407 @@ class _ReadingDetailScreenState extends ConsumerState<ReadingDetailScreen> {
       ),
     );
   }
-
-  Widget _buildStatusChip(String status) {
-    Color color;
-    switch (status) {
-      case 'validated':
-        color = Colors.green;
-        break;
-      case 'pending':
-        color = Colors.orange;
-        break;
-      case 'failed':
-      case 'fraud_suspected':
-        color = Colors.red;
-        break;
-      default:
-        color = Colors.grey;
-    }
-
-    return Chip(
-      label: Text(
-        status.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-      ),
-      backgroundColor: color,
-    );
-  }
-
-  /// Fallback: extract a numeric reading from raw OCR text when `readingValue` is null.
-  num? _extractDigitsFromText(String? text) {
-    if (text == null || text.isEmpty) return null;
-    final dense = text.replaceAll(RegExp(r'\s+'), '');
-    final match = RegExp(r'\d{3,}').firstMatch(dense);
-    if (match == null) return null;
-    return num.tryParse(match.group(0)!);
-  }
 }
 
-/// Shows the meter reading with integer part in [primaryColor] and decimal
-/// part in red. Falls back to a plain [fallbackText] display when split fields
-/// are not available (e.g. older readings stored before the split OCR change).
-class _MeterReadingDisplay extends StatelessWidget {
-  final String? integerReading;
-  final String? decimalReading;
-  final String? fallbackText;
-  final Color primaryColor;
-  final TextStyle? baseStyle;
+// ── Reading hero ──────────────────────────────────────────────────────────────
 
-  const _MeterReadingDisplay({
-    required this.integerReading,
-    required this.decimalReading,
-    required this.fallbackText,
+class _ReadingHero extends StatelessWidget {
+  final Reading reading;
+  final String? displayText;
+  final Color primaryColor;
+
+  const _ReadingHero({
+    required this.reading,
+    required this.displayText,
     required this.primaryColor,
-    required this.baseStyle,
   });
 
   @override
   Widget build(BuildContext context) {
+    final (statusColor, statusIcon, statusLabel) =
+        _statusInfo(reading.validationStatus);
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppTheme.primaryBlue, Color(0xFF0D47A1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryBlue.withValues(alpha: 0.3),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Extracted Reading',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.75),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _ReadingDisplay(
+            integerReading: reading.integerReading,
+            decimalReading: reading.decimalReading,
+            displayText: displayText,
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: statusColor.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(statusIcon,
+                    color: statusColor, size: 15),
+                const SizedBox(width: 6),
+                Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (Color, IconData, String) _statusInfo(String s) {
+    switch (s) {
+      case 'validated':
+        return (Colors.greenAccent, Icons.check_circle_rounded,
+            'VALIDATED');
+      case 'pending':
+        return (Colors.amberAccent, Icons.hourglass_top_rounded,
+            'PENDING');
+      case 'failed':
+      case 'fraud_suspected':
+        return (Colors.redAccent, Icons.cancel_rounded, 'FAILED');
+      default:
+        return (Colors.white54, Icons.help_outline_rounded, 'UNKNOWN');
+    }
+  }
+}
+
+// ── Reading display ───────────────────────────────────────────────────────────
+
+class _ReadingDisplay extends StatelessWidget {
+  final String? integerReading;
+  final String? decimalReading;
+  final String? displayText;
+
+  const _ReadingDisplay({
+    required this.integerReading,
+    required this.decimalReading,
+    required this.displayText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const white = TextStyle(
+      color: Colors.white,
+      fontSize: 38,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -1,
+    );
+
     if (integerReading == null) {
-      // Fallback: no split data — render as plain single-color text
       return Text(
-        fallbackText != null ? '$fallbackText m³' : 'Processing OCR...',
-        style: baseStyle?.copyWith(color: primaryColor),
+        displayText != null ? '$displayText m³' : 'Processing…',
+        style: white,
+        textAlign: TextAlign.center,
       );
     }
 
     return RichText(
       textAlign: TextAlign.center,
       text: TextSpan(
-        style: baseStyle,
+        style: white,
         children: [
-          TextSpan(
-            text: integerReading,
-            style: TextStyle(color: primaryColor),
-          ),
-          TextSpan(text: '.', style: TextStyle(color: primaryColor)),
+          TextSpan(text: integerReading),
+          const TextSpan(text: '.'),
           TextSpan(
             text: decimalReading ?? '---',
-            style: const TextStyle(color: Colors.red),
+            style: const TextStyle(color: Color(0xFFFF8A80)),
           ),
-          TextSpan(text: ' m³', style: TextStyle(color: primaryColor)),
+          const TextSpan(
+              text: ' m³',
+              style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 }
 
-class _DetailRow extends StatelessWidget {
+// ── Confidence row ────────────────────────────────────────────────────────────
+
+class _ConfidenceRow extends StatelessWidget {
+  final double confidence;
+
+  const _ConfidenceRow({required this.confidence});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = confidence * 100;
+    final color = pct >= 80
+        ? AppTheme.statusPaid
+        : pct >= 50
+            ? AppTheme.statusUnpaid
+            : AppTheme.statusOverdue;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('OCR Confidence',
+                  style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                '${pct.toStringAsFixed(1)}%',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    fontSize: 14),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: confidence,
+              minHeight: 6,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Section card ──────────────────────────────────────────────────────────────
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _SectionCard(
+      {required this.title, required this.icon, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 17, color: AppTheme.primaryBlue),
+              const SizedBox(width: 7),
+              Text(title,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(color: AppTheme.primaryBlue)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
 
-  const _DetailRow({required this.label, required this.value, this.valueColor});
+  const _Row({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
-          Text(
-            value,
-            style: TextStyle(fontWeight: FontWeight.bold, color: valueColor),
+          Expanded(
+              child: Text(label,
+                  style:
+                      Theme.of(context).textTheme.bodyMedium)),
+          const SizedBox(width: 16),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontSize: 14),
+              textAlign: TextAlign.right,
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Image evidence ────────────────────────────────────────────────────────────
+
+class _ImageEvidence extends StatelessWidget {
+  final String? imagePath;
+
+  const _ImageEvidence({required this.imagePath});
+
+  @override
+  Widget build(BuildContext context) {
+    if (imagePath == null || imagePath!.isEmpty) {
+      return Container(
+        height: 150,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.image_not_supported_outlined,
+                  size: 36, color: Colors.grey.shade400),
+              const SizedBox(height: 8),
+              Text('No image available',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final url =
+        '${Constants.baseUrl.replaceAll('/api', '')}/$imagePath';
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        url,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            height: 200,
+            color: Colors.grey.shade100,
+            child: Center(
+              child: CircularProgressIndicator(
+                value: progress.expectedTotalBytes != null
+                    ? progress.cumulativeBytesLoaded /
+                        progress.expectedTotalBytes!
+                    : null,
+                color: AppTheme.primaryBlue,
+                strokeWidth: 2,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stack) => Container(
+          height: 160,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.broken_image_outlined,
+                    size: 36, color: Colors.grey.shade400),
+                const SizedBox(height: 8),
+                Text('Failed to load image',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Error body ────────────────────────────────────────────────────────────────
+
+class _ErrorBody extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorBody(
+      {required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 52, color: AppTheme.errorRed),
+            const SizedBox(height: 16),
+            Text('Could not load reading',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }

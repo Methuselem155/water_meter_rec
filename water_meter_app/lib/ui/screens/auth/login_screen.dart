@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
 import 'register_screen.dart';
-import '../../../main.dart'; // To access MainScreen route
+import '../../../main.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -15,6 +16,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -24,7 +26,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _submitLogin() async {
-    // Clear keyboard focus visually
     FocusScope.of(context).unfocus();
 
     if (_formKey.currentState!.validate()) {
@@ -35,17 +36,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!mounted) return;
 
       if (success) {
-        // Navigate to the main home scaffold
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
       } else {
-        // The provider intercepts the error string gracefully
         final error = ref.read(authProvider).error;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error ?? 'Login failed. Please try again.'),
-            backgroundColor: Colors.red,
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded,
+                    color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(error ?? 'Login failed. Please try again.')),
+              ],
+            ),
+            backgroundColor: AppTheme.errorRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
           ),
         );
         ref.read(authProvider.notifier).clearError();
@@ -55,114 +64,159 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch auth state to update UI blocks (like the loading spinner)
     final authState = ref.watch(authProvider);
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
+      backgroundColor: AppTheme.scaffoldBg,
+      body: Column(
+        children: [
+          // ── Gradient header ──────────────────────────────────────────
+          Container(
+            height: size.height * 0.36,
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppTheme.primaryBlue, Color(0xFF0D47A1)],
+              ),
+              borderRadius:
+                  BorderRadius.vertical(bottom: Radius.circular(36)),
+            ),
+            child: SafeArea(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.water_drop, size: 80, color: Colors.blue),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Welcome Back',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
                     ),
+                    child: const Icon(Icons.water_drop_rounded,
+                        size: 38, color: Colors.white),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   const Text(
-                    'Please sign in to continue.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Identifier Input (Phone or Account)
-                  TextFormField(
-                    controller: _identifierController,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone or Account Number',
-                      prefixIcon: Icon(Icons.person_outline),
+                    'Welcome Back',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
                     ),
-                    textInputAction: TextInputAction.next,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter your phone or account number';
-                      }
-                      return null;
-                    },
                   ),
-                  const SizedBox(height: 16),
-
-                  // Password Input
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true, // Hide password dots safely
-                    decoration: const InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: Icon(Icons.lock_outline),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sign in to your account',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 13,
                     ),
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) =>
-                        _submitLogin(), // Map 'Enter' to submit
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your password';
-                      }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters.';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Login Button with Loading state lock
-                  ElevatedButton(
-                    onPressed: authState.isLoading ? null : _submitLogin,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: authState.isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Login', style: TextStyle(fontSize: 16)),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Route to Registration Screen
-                  TextButton(
-                    onPressed: authState.isLoading
-                        ? null
-                        : () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const RegisterScreen(),
-                              ),
-                            );
-                          },
-                    child: const Text('Don\'t have an account? Sign Up'),
                   ),
                 ],
               ),
             ),
           ),
-        ),
+
+          // ── Form ─────────────────────────────────────────────────────
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _identifierController,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone or Account Number',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
+                      ),
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter your phone or account number';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
+                        ),
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _submitLogin(),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your password';
+                        }
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 28),
+
+                    ElevatedButton(
+                      onPressed: authState.isLoading ? null : _submitLogin,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: authState.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Sign In',
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 20),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text("Don't have an account?",
+                            style: TextStyle(color: Colors.grey.shade600)),
+                        TextButton(
+                          onPressed: authState.isLoading
+                              ? null
+                              : () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const RegisterScreen()),
+                                  ),
+                          child: const Text('Sign Up',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

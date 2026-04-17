@@ -42,7 +42,7 @@ class HistoryState {
     this.hasMoreReadings = true,
     this.billPage = 1,
     this.hasMoreBills = true,
-    this.showingBills = false,
+    this.showingBills = true,
     this.billStatusFilter,
   });
 
