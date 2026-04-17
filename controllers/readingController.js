@@ -317,10 +317,8 @@ exports.scanReading = async (req, res) => {
 
         const displayPath = displayFile.path;
 
-        // First crop  → python ocr_model/ocr.py --image <path> --meter --no-boxes
-        // Second crop → python ocr_model/ocr.py --image <path> --serial --no-boxes
-        // Run in parallel when both crops are present for speed.
-        console.log(`[Scan] Running --meter OCR on display crop: ${displayPath}`);
+        // Use auto mode to extract both reading and serial from the single image
+        console.log(`[Scan] Running auto OCR on display image: ${displayPath}`);
 
         let displayResult, serialResult;
 
@@ -331,8 +329,10 @@ exports.scanReading = async (req, res) => {
                 processSerial(serialFile.path),
             ]);
         } else {
-            displayResult = await processDisplay(displayPath);
-            serialResult  = { serialNumberExtracted: null, confidence: 0, rawText: '' };
+            // No separate serial crop — use auto mode which extracts both in one call
+            const autoResult = await ocrService.processImage(displayPath, 'auto');
+            displayResult = autoResult;
+            serialResult  = { serialNumberExtracted: autoResult.serialNumberExtracted, confidence: autoResult.confidence, rawText: '' };
         }
 
         console.log(`[Scan] display OCR: value=${displayResult.readingValue} conf=${displayResult.confidence}`);

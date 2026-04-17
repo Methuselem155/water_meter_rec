@@ -1,12 +1,21 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../providers/camera_provider.dart';
 import 'confirmation_screen.dart';
+
+// The green frame covers the middle 50% height and 84% width of the preview.
+// These ratios must match _GuideFramePainter exactly.
+const double _frameMarginRatio = 0.08; // left/right margin = 8% of width
+const double _frameTopRatio    = 0.25; // top of frame   = 25% of height
+const double _frameBottomRatio = 0.75; // bottom of frame = 75% of height
 
 class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
@@ -18,9 +27,10 @@ class CameraScreen extends ConsumerStatefulWidget {
 class _CameraScreenState extends ConsumerState<CameraScreen>
     with WidgetsBindingObserver {
   bool _isPermissionGranted = false;
+  bool _isCropping = false;
 
-  final GlobalKey<_CropOverlayWidgetState> _overlayKey =
-      GlobalKey<_CropOverlayWidgetState>();
+  // Key on the Stack so we can read the preview render size
+  final GlobalKey _previewKey = GlobalKey();
 
   @override
   void initState() {
@@ -44,12 +54,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final cameraNotifier = ref.read(cameraProvider.notifier);
     final cameraState = ref.read(cameraProvider);
-
     if (cameraState.controller == null ||
-        !cameraState.controller!.value.isInitialized) {
-      return;
-    }
-
+        !cameraState.controller!.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
       if (!kIsWeb) cameraNotifier.dispose();
     } else if (state == AppLifecycleState.resumed) {
@@ -68,40 +74,70 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Camera permission is required to capture water meter readings.',
-          ),
+          content: Text('Camera permission is required to capture water meter readings.'),
         ),
       );
     }
   }
 
-  /// Capture the full image and send it directly — no cropping.
-  /// Claude Vision processes the complete photo.
+  /// Crop the saved image to the green frame area.
+  /// The frame ratios are applied to the actual image dimensions.
+  Future<String> _cropToFrame(String imagePath, CameraController controller) async {
+    final bytes = await File(imagePath).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return imagePath;
+
+    // Camera images may be rotated — img.decodeImage handles EXIF automatically
+    final iw = decoded.width;
+    final ih = decoded.height;
+
+    // The camera preview on Android is usually portrait with sensor rotated.
+    // We work in the image's own coordinate space after decode (EXIF applied).
+    // Map the frame ratios directly onto image pixels.
+    final x = (iw * _frameMarginRatio).round();
+    final y = (ih * _frameTopRatio).round();
+    final w = (iw * (1 - 2 * _frameMarginRatio)).round();
+    final h = (ih * (_frameBottomRatio - _frameTopRatio)).round();
+
+    final cropped = img.copyCrop(decoded, x: x, y: y, width: w, height: h);
+
+    final dir = await getTemporaryDirectory();
+    final outPath = '${dir.path}/meter_crop_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await File(outPath).writeAsBytes(img.encodeJpg(cropped, quality: 90));
+    return outPath;
+  }
+
   Future<void> _takePicture() async {
     final cameraState = ref.read(cameraProvider);
     final controller = cameraState.controller;
 
     if (controller == null ||
         !controller.value.isInitialized ||
-        controller.value.isTakingPicture) {
-      return;
-    }
+        controller.value.isTakingPicture ||
+        _isCropping) return;
 
     try {
       final XFile image = await controller.takePicture();
       if (!mounted) return;
 
-      ref.read(cameraProvider.notifier).setCapturedImage(image.path);
+      setState(() => _isCropping = true);
+
+      final croppedPath = await _cropToFrame(image.path, controller);
+
+      if (!mounted) return;
+      setState(() => _isCropping = false);
+
+      ref.read(cameraProvider.notifier).setCapturedImage(croppedPath);
 
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ConfirmationScreen(imagePath: image.path),
+          builder: (_) => ConfirmationScreen(imagePath: croppedPath),
         ),
       );
     } catch (e) {
       if (mounted) {
+        setState(() => _isCropping = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error capturing image: $e')),
         );
@@ -113,9 +149,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   Widget build(BuildContext context) {
     if (!_isPermissionGranted) {
       return const Center(
-        child: Text(
-          'Please grant camera permissions manually from device settings.',
-        ),
+        child: Text('Please grant camera permissions manually from device settings.'),
       );
     }
 
@@ -123,10 +157,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
     if (cameraState.error != null) {
       return Center(
-        child: Text(
-          cameraState.error!,
-          style: const TextStyle(color: Colors.red),
-        ),
+        child: Text(cameraState.error!, style: const TextStyle(color: Colors.red)),
       );
     }
 
@@ -139,316 +170,91 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
     return Scaffold(
       body: Stack(
+        key: _previewKey,
         fit: StackFit.expand,
         children: [
           CameraPreview(cameraState.controller!),
-          CropOverlayWidget(key: _overlayKey),
+          CustomPaint(painter: _GuideFramePainter()),
           const Positioned(
             top: 50,
             left: 20,
             right: 20,
             child: Text(
-              'Align the meter inside the frame. The full photo will be sent for reading.',
+              'Fit the meter inside the frame — the frame area will be sent for reading.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 shadows: [
-                  Shadow(
-                    blurRadius: 10,
-                    color: Colors.black54,
-                    offset: Offset(2, 2),
-                  ),
+                  Shadow(blurRadius: 10, color: Colors.black54, offset: Offset(2, 2)),
                 ],
               ),
             ),
           ),
-          Positioned(
-            bottom: 30,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: FloatingActionButton(
-                onPressed: _takePicture,
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                child: const Icon(
-                  Icons.camera_alt,
-                  size: 30,
-                  color: Colors.white,
+          if (_isCropping)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.greenAccent),
+                    SizedBox(height: 12),
+                    Text('Processing...', style: TextStyle(color: Colors.white)),
+                  ],
                 ),
               ),
             ),
-          ),
+          if (!_isCropping)
+            Positioned(
+              bottom: 30,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: FloatingActionButton(
+                  onPressed: _takePicture,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  child: const Icon(Icons.camera_alt, size: 30, color: Colors.white),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-// ----------------------------------------------------------------------
-// Framing Overlay Widget (visual guide only — image is NOT cropped)
-// ----------------------------------------------------------------------
-
-class CropOverlayWidget extends StatefulWidget {
-  const CropOverlayWidget({super.key});
-
-  @override
-  State<CropOverlayWidget> createState() => _CropOverlayWidgetState();
-}
-
-class _CropOverlayWidgetState extends State<CropOverlayWidget> {
-  static const double _handleSize = 18.0;
-  static const double _minBox = 40.0;
-
-  Rect? _digitRect;
-  Rect? _serialRect;
-
-  Size _layoutSize = Size.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
-  }
-
-  Size get layoutSize => _layoutSize;
-
-  static Rect _defaultDigit(Size s) => Rect.fromCenter(
-        center: Offset(s.width / 2, s.height * 0.4),
-        width: s.width * 0.70,
-        height: 65,
-      );
-
-  static Rect _defaultSerial(Size s) => Rect.fromCenter(
-        center: Offset(s.width / 2, s.height * 0.6),
-        width: s.width * 0.60,
-        height: 60,
-      );
-
-  Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final dl = prefs.getDouble('crop_digit_left');
-    final dt = prefs.getDouble('crop_digit_top');
-    final dw = prefs.getDouble('crop_digit_width');
-    final dh = prefs.getDouble('crop_digit_height');
-    final sl = prefs.getDouble('crop_serial_left');
-    final st = prefs.getDouble('crop_serial_top');
-    final sw = prefs.getDouble('crop_serial_width');
-    final sh = prefs.getDouble('crop_serial_height');
-
-    if (!mounted) return;
-    setState(() {
-      if (dl != null && dt != null && dw != null && dh != null) {
-        _digitRect = Rect.fromLTWH(dl, dt, dw, dh);
-      }
-      if (sl != null && st != null && sw != null && sh != null) {
-        _serialRect = Rect.fromLTWH(sl, st, sw, sh);
-      }
-    });
-  }
-
-  Future<void> _saveCurrentState() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_digitRect != null) {
-      await prefs.setDouble('crop_digit_left', _digitRect!.left);
-      await prefs.setDouble('crop_digit_top', _digitRect!.top);
-      await prefs.setDouble('crop_digit_width', _digitRect!.width);
-      await prefs.setDouble('crop_digit_height', _digitRect!.height);
-    }
-    if (_serialRect != null) {
-      await prefs.setDouble('crop_serial_left', _serialRect!.left);
-      await prefs.setDouble('crop_serial_top', _serialRect!.top);
-      await prefs.setDouble('crop_serial_width', _serialRect!.width);
-      await prefs.setDouble('crop_serial_height', _serialRect!.height);
-    }
-  }
-
-  Rect _clamp(Rect r, Size s) {
-    final w = r.width.clamp(_minBox, s.width);
-    final h = r.height.clamp(_minBox, s.height);
-    final l = r.left.clamp(0.0, s.width - w);
-    final t = r.top.clamp(0.0, s.height - h);
-    return Rect.fromLTWH(l, t, w, h);
-  }
-
-  Widget _buildBox({
-    required Rect rect,
-    required String label,
-    required Size size,
-    required void Function(Rect) onChanged,
-  }) {
-    return Stack(
-      children: [
-        Positioned(
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onPanUpdate: (d) => onChanged(
-              _clamp(
-                Rect.fromLTWH(
-                  rect.left + d.delta.dx,
-                  rect.top + d.delta.dy,
-                  rect.width,
-                  rect.height,
-                ),
-                size,
-              ),
-            ),
-            onPanEnd: (_) => _saveCurrentState(),
-            child: Center(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  shadows: [Shadow(blurRadius: 4, color: Colors.black)],
-                ),
-              ),
-            ),
-          ),
-        ),
-        for (final corner in _Corner.values)
-          _buildHandle(rect, corner, size, onChanged),
-      ],
-    );
-  }
-
-  Widget _buildHandle(
-    Rect rect,
-    _Corner corner,
-    Size size,
-    void Function(Rect) onChanged,
-  ) {
-    final isLeft =
-        corner == _Corner.topLeft || corner == _Corner.bottomLeft;
-    final isTop =
-        corner == _Corner.topLeft || corner == _Corner.topRight;
-    final hx = isLeft
-        ? rect.left - _handleSize / 2
-        : rect.right - _handleSize / 2;
-    final hy = isTop
-        ? rect.top - _handleSize / 2
-        : rect.bottom - _handleSize / 2;
-
-    return Positioned(
-      left: hx,
-      top: hy,
-      width: _handleSize,
-      height: _handleSize,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanUpdate: (d) {
-          double l = rect.left,
-              t = rect.top,
-              r = rect.right,
-              b = rect.bottom;
-          if (isLeft) {
-            l = (l + d.delta.dx).clamp(0.0, r - _minBox);
-          } else {
-            r = (r + d.delta.dx).clamp(l + _minBox, size.width);
-          }
-          if (isTop) {
-            t = (t + d.delta.dy).clamp(0.0, b - _minBox);
-          } else {
-            b = (b + d.delta.dy).clamp(t + _minBox, size.height);
-          }
-          onChanged(Rect.fromLTRB(l, t, r, b));
-        },
-        onPanEnd: (_) => _saveCurrentState(),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: Colors.greenAccent, width: 2),
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (ctx, constraints) {
-      final size = constraints.biggest;
-
-      if (_layoutSize != size) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() => _layoutSize = size);
-        });
-      }
-
-      final digitRect = _clamp(_digitRect ?? _defaultDigit(size), size);
-      final serialRect = _clamp(_serialRect ?? _defaultSerial(size), size);
-
-      return Stack(
-        children: [
-          CustomPaint(
-            size: size,
-            painter: _DimmedOverlayPainter(
-              digitRect: digitRect,
-              serialRect: serialRect,
-            ),
-          ),
-          _buildBox(
-            rect: digitRect,
-            label: 'Meter Digits · Drag to reposition · Pull corners to resize',
-            size: size,
-            onChanged: (r) => setState(() => _digitRect = r),
-          ),
-          _buildBox(
-            rect: serialRect,
-            label:
-                'Serial Number · Drag to reposition · Pull corners to resize',
-            size: size,
-            onChanged: (r) => setState(() => _serialRect = r),
-          ),
-        ],
-      );
-    });
-  }
-}
-
-enum _Corner { topLeft, topRight, bottomLeft, bottomRight }
-
-class _DimmedOverlayPainter extends CustomPainter {
-  final Rect digitRect;
-  final Rect serialRect;
-
-  const _DimmedOverlayPainter(
-      {required this.digitRect, required this.serialRect});
-
+// Guide frame — ratios must match _frameMarginRatio / _frameTopRatio / _frameBottomRatio
+class _GuideFramePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
+    // Dim everything outside the frame
     final dimPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.5)
+      ..color = Colors.black.withValues(alpha: 0.45)
       ..style = PaintingStyle.fill;
 
-    final borderPaint = Paint()
-      ..color = Colors.greenAccent
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    final full = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    final holes = Path()
-      ..addRect(digitRect)
-      ..addRect(serialRect);
-
-    canvas.drawPath(
-      Path.combine(PathOperation.difference, full, holes),
-      dimPaint,
+    final frame = Rect.fromLTRB(
+      size.width  * _frameMarginRatio,
+      size.height * _frameTopRatio,
+      size.width  * (1 - _frameMarginRatio),
+      size.height * _frameBottomRatio,
     );
-    canvas.drawRect(digitRect, borderPaint);
-    canvas.drawRect(serialRect, borderPaint);
+
+    final full = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final hole = Path()..addRect(frame);
+    canvas.drawPath(Path.combine(PathOperation.difference, full, hole), dimPaint);
+
+    // Green border
+    canvas.drawRect(
+      frame,
+      Paint()
+        ..color = Colors.greenAccent.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
   }
 
   @override
-  bool shouldRepaint(_DimmedOverlayPainter old) =>
-      old.digitRect != digitRect || old.serialRect != serialRect;
+  bool shouldRepaint(_GuideFramePainter old) => false;
 }

@@ -3,3 +3,4 @@ node_modules/
 
 # Ignore uploaded images so they aren't tracked
 uploads/
+claude api key.txt
