@@ -4,6 +4,7 @@ const path = require('path');
 const http = require('http');
 const os = require('os');
 
+const OCR_SERVER_HOST = process.env.OCR_SERVER_HOST || '127.0.0.1';
 const OCR_SERVER_PORT = parseInt(process.env.OCR_SERVER_PORT || '5001', 10);
 
 // Read key dynamically so it's always current (not captured at module load time)
@@ -176,7 +177,7 @@ const callOcrServer = (imagePath, mode = 'auto') => {
         const body = JSON.stringify({ imagePath, mode });
         const req = http.request(
             {
-                hostname: '127.0.0.1',
+                hostname: OCR_SERVER_HOST,
                 port: OCR_SERVER_PORT,
                 path: '/ocr',
                 method: 'POST',

@@ -78,7 +78,23 @@ const billSchema = new mongoose.Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ['momo', 'bank', 'cash'],
+        enum: ['momo', 'bank', 'cash', 'paypack'],
+        default: null
+    },
+    // Paypack-specific fields
+    paypackRef: {
+        type: String,
+        default: null,
+        index: true
+    },
+    paymentStatus: {
+        type: String,
+        enum: ['pending', 'pending_payment', 'paid', 'failed'],
+        default: 'pending',
+        index: true
+    },
+    paymentPhone: {
+        type: String,
         default: null
     }
 });

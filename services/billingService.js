@@ -2,20 +2,9 @@ const Bill = require('../models/Bill');
 const Reading = require('../models/Reading');
 const Meter = require('../models/Meter');
 const User = require('../models/User');
-const { TARIFFS, VAT_RATE } = require('../config/tariffs');
+const Tariff = require('../models/Tariff');
 
-/**
- * Calculate bill amount for a given category and consumption.
- * Returns totalAmount (VAT exclusive), breakdown, vatAmount, totalAmountVatInclusive.
- *
- * @param {string} category - Customer category
- * @param {number} consumption - m³ consumed
- * @returns {{ totalAmount, breakdown, vatAmount, totalAmountVatInclusive }}
- */
-const calculateBill = (category, consumption) => {
-    const tariff = TARIFFS[category];
-    if (!tariff) throw new Error(`Unknown tariff category: ${category}`);
-
+const calculateBill = (tariff, consumption) => {
     let totalAmount = 0;
     let breakdown = [];
 
@@ -28,14 +17,14 @@ const calculateBill = (category, consumption) => {
             tierName: 'Flat rate',
         }];
     } else {
-        // Progressive / block calculation
         let remaining = consumption;
         let previousLimit = 0;
 
         for (const band of tariff.bands) {
             if (remaining <= 0) break;
 
-            const bandSize = band.upTo === Infinity
+            const isLastBand = band.upTo >= 999999;
+            const bandSize = isLastBand
                 ? remaining
                 : band.upTo - previousLimit;
 
@@ -49,7 +38,7 @@ const calculateBill = (category, consumption) => {
                 units: billableUnits,
                 rate: band.rate,
                 cost,
-                tierName: band.upTo === Infinity
+                tierName: isLastBand
                     ? `Above ${previousLimit} m³`
                     : `${previousLimit + 1}–${band.upTo} m³`,
             });
@@ -58,7 +47,8 @@ const calculateBill = (category, consumption) => {
         }
     }
 
-    const vatAmount = Math.round(totalAmount * VAT_RATE * 100) / 100;
+    const vatRate = tariff.vatRate ?? 0.18;
+    const vatAmount = Math.round(totalAmount * vatRate * 100) / 100;
     const totalAmountVatInclusive = Math.round((totalAmount + vatAmount) * 100) / 100;
     totalAmount = Math.round(totalAmount * 100) / 100;
 
@@ -88,6 +78,9 @@ exports.generateBill = async (readingId) => {
 
         const category = user.category || 'RESIDENTIAL';
 
+        const tariff = await Tariff.findOne({ category });
+        if (!tariff) throw new Error(`No tariff configured for category: ${category}`);
+
         // Fetch previous validated reading for this meter
         const previousReading = await Reading.findOne({
             meterId: currentReading.meterId._id || currentReading.meterId,
@@ -114,7 +107,7 @@ exports.generateBill = async (readingId) => {
         }
 
         const { totalAmount, breakdown, vatAmount, totalAmountVatInclusive } =
-            calculateBill(category, consumption);
+            calculateBill(tariff, consumption);
 
         const bill = new Bill({
             readingId: currentReading._id,

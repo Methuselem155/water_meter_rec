@@ -6,6 +6,7 @@ import Users from './pages/Users';
 import Meters from './pages/Meters';
 import Readings from './pages/Readings';
 import Bills from './pages/Bills';
+import Tariffs from './pages/Tariffs';
 import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children }) => {
@@ -30,6 +31,7 @@ function App() {
           <Route path="meters" element={<Meters />} />
           <Route path="readings" element={<Readings />} />
           <Route path="bills" element={<Bills />} />
+          <Route path="tariffs" element={<Tariffs />} />
         </Route>
       </Routes>
     </BrowserRouter>

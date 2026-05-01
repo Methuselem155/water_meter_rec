@@ -36,3 +36,6 @@ export const resetSystem = () => api.post('/admin/reset');
 // Bills
 export const getBillsSummary = () => api.get('/admin/bills/summary');
 export const confirmPayment = (billId, payload) => api.patch(`/admin/bills/${billId}/confirm-payment`, payload);
+
+// Payments
+export const getPaymentStatus = (ref) => api.get(`/payments/status/${ref}`);

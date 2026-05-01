@@ -72,6 +72,47 @@ exports.getMyBills = async (req, res) => {
     }
 };
 
+// @route   GET /api/bills/summary
+// @desc    Count and amount totals grouped by status for the authenticated user
+// @access  Private
+exports.getBillsSummary = async (req, res) => {
+    try {
+        const userMeters  = await Meter.find({ userId: req.user.id });
+        const meterIds    = userMeters.map(m => m._id);
+        const readings    = await Reading.find({ meterId: { $in: meterIds } });
+        const readingIds  = readings.map(r => r._id);
+
+        const [unpaid, paid, overdue] = await Promise.all([
+            Bill.aggregate([
+                { $match: { readingId: { $in: readingIds }, status: 'unpaid' } },
+                { $group: { _id: null, count: { $sum: 1 }, totalAmount: { $sum: '$totalAmountVatInclusive' } } },
+            ]),
+            Bill.aggregate([
+                { $match: { readingId: { $in: readingIds }, status: 'paid' } },
+                { $group: { _id: null, count: { $sum: 1 } } },
+            ]),
+            Bill.aggregate([
+                { $match: { readingId: { $in: readingIds }, status: 'overdue' } },
+                { $group: { _id: null, count: { $sum: 1 }, totalAmount: { $sum: '$totalAmountVatInclusive' } } },
+            ]),
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                totalUnpaid:        unpaid[0]?.count       || 0,
+                totalPaid:          paid[0]?.count         || 0,
+                totalOverdue:       overdue[0]?.count      || 0,
+                totalAmountUnpaid:  unpaid[0]?.totalAmount  || 0,
+                totalAmountOverdue: overdue[0]?.totalAmount || 0,
+            },
+        });
+    } catch (err) {
+        console.error('Error in getBillsSummary:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 // @route   GET /api/bills/:id
 // @desc    Get a single bill by its ID
 // @access  Private

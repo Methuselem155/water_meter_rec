@@ -49,6 +49,9 @@ class Bill extends Equatable {
   final String? paymentReference;
   final String? category;
   final Reading? reading;
+  final String? paypackRef;
+  final String? paymentStatus;
+  final String? paymentPhone;
 
   const Bill({
     required this.id,
@@ -69,6 +72,9 @@ class Bill extends Equatable {
     this.paymentReference,
     this.category,
     this.reading,
+    this.paypackRef,
+    this.paymentStatus,
+    this.paymentPhone,
   });
 
   factory Bill.fromJson(Map<String, dynamic> json) {
@@ -110,6 +116,9 @@ class Bill extends Equatable {
       reading: json['readingId'] is Map
           ? Reading.fromJson(json['readingId'] as Map<String, dynamic>)
           : null,
+      paypackRef: json['paypackRef'] as String?,
+      paymentStatus: json['paymentStatus'] as String?,
+      paymentPhone: json['paymentPhone'] as String?,
     );
   }
 
@@ -119,6 +128,7 @@ class Bill extends Equatable {
         currentReadingValue, consumption, tariffBands, totalAmount,
         vatAmount, totalAmountVatInclusive, generatedDate, dueDate,
         status, paidAt, paymentMethod, paymentReference, category, reading,
+        paypackRef, paymentStatus, paymentPhone,
       ];
 }
 

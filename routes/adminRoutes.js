@@ -23,4 +23,8 @@ router.patch('/bills/mark-overdue',        adminMiddleware, adminController.mark
 router.get('/bills',                       adminMiddleware, adminController.getAdminBills);
 router.patch('/bills/:id/confirm-payment', adminMiddleware, adminController.confirmPayment);
 
+// Tariff routes
+router.get('/tariffs',      adminMiddleware, adminController.getTariffs);
+router.put('/tariffs/:id',  adminMiddleware, adminController.updateTariff);
+
 module.exports = router;

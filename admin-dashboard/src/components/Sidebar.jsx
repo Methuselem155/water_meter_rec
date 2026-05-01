@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Users, Settings as Gauge, FileText, FileCheck, LogOut, Droplets } from 'lucide-react';
+import { Home, Users, Settings as Gauge, FileText, FileCheck, LogOut, Droplets, DollarSign } from 'lucide-react';
 
 const Sidebar = () => {
   const navigate = useNavigate();
@@ -16,6 +16,7 @@ const Sidebar = () => {
     { name: 'Meters', path: '/meters', icon: <Gauge size={20} /> },
     { name: 'Readings', path: '/readings', icon: <FileCheck size={20} /> },
     { name: 'Bills', path: '/bills', icon: <FileText size={20} /> },
+    { name: 'Tariffs', path: '/tariffs', icon: <DollarSign size={20} /> },
   ];
 
   return (

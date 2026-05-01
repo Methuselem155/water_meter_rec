@@ -5,10 +5,10 @@ class Constants {
   static String get baseUrl {
     if (kIsWeb) {
       // Web builds point to localhost
-      return 'http://localhost:3000/api';
+      return 'https://stream-sudoku-armchair.ngrok-free.dev/api';
     } else {
-      // Use provided IP for external devices
-      return 'http://192.168.43.233:3000/api';
+      // Mobile: run `npm run patch-url` to auto-update this to the current ngrok URL
+      return 'https://stream-sudoku-armchair.ngrok-free.dev/api';
     }
   }
 

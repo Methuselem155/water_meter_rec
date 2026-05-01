@@ -1,0 +1,15 @@
+Server is running on http://0.0.0.0:3000
+Connected to MongoDB
+[0mGET / [32m200[0m 5.246 ms - 52[0m
+[0mPOST /api/auth/login [33m400[0m 88.009 ms - 101[0m
+[0mPOST /api/auth/login [33m400[0m 89.539 ms - 79[0m
+[0mPOST /api/auth/login [32m200[0m 85.727 ms - 388[0m
+[0mPOST /api/payments/cashin [33m401[0m 2.765 ms - 100[0m
+[paymentController] cashin error: Error: number not found for testing mode
+    at request (C:\Users\Methuselem\water-meter\services\paypackService.js:30:21)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async exports.initiateCashin (C:\Users\Methuselem\water-meter\controllers\paymentController.js:39:24) {
+  status: 404,
+  body: { message: 'number not found for testing mode' }
+}
+[0mPOST /api/payments/cashin [31m502[0m 8603.761 ms - 63[0m

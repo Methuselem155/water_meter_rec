@@ -21,11 +21,18 @@ if (missingVars.length > 0) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust the first proxy (ngrok / nginx / any reverse proxy).
+// Required so express-rate-limit can read X-Forwarded-For correctly.
+app.set('trust proxy', 1);
+
 // Connect to MongoDB
+const seedTariffs = require('./config/seedTariffs');
+
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to MongoDB');
+    await seedTariffs();
   } catch (error) {
     console.error('Error connecting to MongoDB:', error.message);
     process.exit(1);
@@ -76,6 +83,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/readings', require('./routes/readingRoutes'));
 app.use('/api/bills', require('./routes/billRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/payments', require('./routes/payments'));
 
 // Simple test route
 app.get('/', (req, res) => {

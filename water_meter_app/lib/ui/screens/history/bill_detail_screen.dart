@@ -7,6 +7,7 @@ import '../../../models/bill.dart';
 import '../../../models/reading.dart';
 import 'reading_detail_screen.dart';
 import 'history_screen.dart' show BillStatusBadge;
+import 'pay_bill_sheet.dart';
 
 class BillDetailScreen extends ConsumerWidget {
   final String billId;
@@ -48,6 +49,18 @@ class BillDetailScreen extends ConsumerWidget {
                         'This bill is overdue. Please pay as soon as possible.',
                     color: AppTheme.statusOverdue,
                     bg: AppTheme.statusOverdueBg,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // ── Pending payment banner ────────────────────────────
+                if (bill.paymentStatus == 'pending_payment') ...[
+                  _Banner(
+                    icon: Icons.hourglass_top_rounded,
+                    message:
+                        'Payment is being processed. Waiting for Mobile Money approval.',
+                    color: const Color(0xFF0277BD),
+                    bg: const Color(0xFFE1F5FE),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -183,6 +196,31 @@ class BillDetailScreen extends ConsumerWidget {
                               : 'No reference',
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // ── Pay Bill button ───────────────────────────────────
+                if (bill.status != 'paid' &&
+                    bill.paymentStatus != 'paid' &&
+                    bill.paymentStatus != 'pending_payment') ...[
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(24)),
+                        ),
+                        builder: (_) => PayBillSheet(bill: bill),
+                      );
+                    },
+                    icon: const Icon(Icons.payment_rounded),
+                    label: const Text('Pay via Mobile Money'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),
                   const SizedBox(height: 12),

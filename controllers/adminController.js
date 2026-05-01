@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Meter = require('../models/Meter');
 const Reading = require('../models/Reading');
 const Bill = require('../models/Bill');
+const Tariff = require('../models/Tariff');
 const bcrypt = require('bcrypt');
 
 // @route   GET /api/admin/stats
@@ -310,6 +311,60 @@ exports.markOverdue = async (req, res) => {
             { $set: { status: 'overdue' } }
         );
         res.json({ success: true, data: { updatedCount: result.modifiedCount } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// @route   GET /api/admin/tariffs
+// @desc    Get all tariff configurations
+// @access  Admin
+exports.getTariffs = async (req, res) => {
+    try {
+        const tariffs = await Tariff.find().sort({ category: 1 });
+        res.json({ success: true, data: tariffs });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// @route   PUT /api/admin/tariffs/:id
+// @desc    Update a single tariff
+// @access  Admin
+exports.updateTariff = async (req, res) => {
+    try {
+        const { type, rate, bands, vatRate } = req.body;
+
+        if (!type || !['flat', 'progressive'].includes(type)) {
+            return res.status(400).json({ success: false, message: 'type must be flat or progressive' });
+        }
+
+        if (type === 'flat' && (rate == null || rate <= 0)) {
+            return res.status(400).json({ success: false, message: 'Flat tariff requires a positive rate' });
+        }
+
+        if (type === 'progressive' && (!Array.isArray(bands) || bands.length === 0)) {
+            return res.status(400).json({ success: false, message: 'Progressive tariff requires at least one band' });
+        }
+
+        if (vatRate != null && (vatRate < 0 || vatRate > 1)) {
+            return res.status(400).json({ success: false, message: 'VAT rate must be between 0 and 1' });
+        }
+
+        const update = { type };
+        if (type === 'flat') {
+            update.rate = rate;
+            update.bands = [];
+        } else {
+            update.bands = bands;
+            update.rate = undefined;
+        }
+        if (vatRate != null) update.vatRate = vatRate;
+
+        const tariff = await Tariff.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+        if (!tariff) return res.status(404).json({ success: false, message: 'Tariff not found' });
+
+        res.json({ success: true, data: tariff });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
