@@ -76,6 +76,7 @@ exports.validateReading = async (readingId) => {
         // Check 1: Ensure value was extracted at all
         if (reading.readingValue === null || reading.readingValue === undefined) {
             reading.validationStatus = 'failed';
+            reading.failureReason = 'Could not extract meter reading digits from the image. Please retake a clearer photo.';
             await reading.save();
             console.warn(`[Validation Service] Reading ${readingId} failed: No consumption digits extracted.`);
             return reading;
@@ -96,6 +97,7 @@ exports.validateReading = async (readingId) => {
             const digitCount = (extractedSerial.match(/\d/g) || []).length;
             if (digitCount >= 2 && similarity < SERIAL_SIMILARITY_THRESHOLD) {
                 reading.validationStatus = 'fraud_suspected';
+                reading.failureReason = `Extracted serial number "${extractedSerial}" does not match your registered meter serial "${actualSerial}". Please make sure you are scanning your own meter.`;
                 await reading.save();
                 console.warn(`[Validation Service] Reading ${readingId} flagged as fraud_suspected: serial similarity ${(similarity * 100).toFixed(1)}% below threshold.`);
                 return reading;
@@ -123,6 +125,7 @@ exports.validateReading = async (readingId) => {
             const confidence = reading.confidence || 0;
             if (!isNaN(currentVal) && !isNaN(prevVal) && currentVal < prevVal && confidence >= 0.5) {
                 reading.validationStatus = 'failed';
+                reading.failureReason = `Current reading (${currentVal} m³) is less than the previous reading (${prevVal} m³). Meter readings should always increase. Please retake the photo or contact support.`;
                 await reading.save();
                 console.warn(`[Validation Service] Reading ${readingId} failed: Current value (${reading.readingValue}) is less than previous (${previousReading.readingValue}).`);
                 return reading;

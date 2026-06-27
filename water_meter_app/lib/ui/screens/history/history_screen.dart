@@ -207,6 +207,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             displayValue: display,
             date: _dateFmt.format(r.submissionTime),
             status: r.validationStatus,
+            failureReason: r.failureReason,
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -342,12 +343,14 @@ class _ReadingCard extends StatelessWidget {
   final String? displayValue;
   final String date;
   final String status;
+  final String? failureReason;
   final VoidCallback onTap;
 
   const _ReadingCard({
     required this.displayValue,
     required this.date,
     required this.status,
+    this.failureReason,
     required this.onTap,
   });
 
@@ -400,6 +403,22 @@ class _ReadingCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(date,
                       style: Theme.of(context).textTheme.bodySmall),
+                  if (failureReason != null &&
+                      failureReason!.isNotEmpty &&
+                      (status == 'failed' || status == 'fraud_suspected'))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        failureReason!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppTheme.statusOverdue.withValues(alpha: 0.9),
+                          fontSize: 11,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -108,6 +108,7 @@ const runOcrJob = async (readingId) => {
                 validationStatus: 'failed',
                 confidence: 0,
                 ocrMethod: 'failed',
+                failureReason: `OCR processing failed: ${error.message}. Please try uploading a clearer image.`,
             });
         } catch (dbErr) {
             console.error(

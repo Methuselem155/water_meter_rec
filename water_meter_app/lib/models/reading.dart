@@ -16,6 +16,7 @@ class Reading extends Equatable {
   final String? integerReading;
   final String? decimalReading;
   final bool decimalEstimated;
+  final String? failureReason;
 
   const Reading({
     required this.id,
@@ -31,6 +32,7 @@ class Reading extends Equatable {
     this.integerReading,
     this.decimalReading,
     this.decimalEstimated = false,
+    this.failureReason,
   });
 
   factory Reading.fromJson(Map<String, dynamic> json) {
@@ -69,6 +71,7 @@ class Reading extends Equatable {
       integerReading: json['integer_reading'] as String?,
       decimalReading: json['decimal_reading'] as String?,
       decimalEstimated: json['decimal_estimated'] as bool? ?? false,
+      failureReason: json['failure_reason'] ?? json['failureReason'],
     );
   }
 
@@ -76,7 +79,7 @@ class Reading extends Equatable {
   List<Object?> get props => [
         id, meterId, imagePath, serialNumberExtracted, extracted, readingValue,
         confidence, validationStatus, submissionTime, billingPeriod,
-        integerReading, decimalReading, decimalEstimated,
+        integerReading, decimalReading, decimalEstimated, failureReason,
       ];
 }
 

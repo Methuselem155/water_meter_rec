@@ -71,6 +71,10 @@ const readingSchema = new mongoose.Schema({
     lastOcrAttempt: {
         type: Date,
         default: null
+    },
+    failureReason: {
+        type: String,
+        default: null
     }
 });
 

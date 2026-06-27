@@ -72,6 +72,55 @@ class _ReadingDetailScreenState
                 ),
                 const SizedBox(height: 14),
 
+                // ── Failure reason banner ─────────────────────────────
+                if (reading.failureReason != null &&
+                    reading.failureReason!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.statusOverdueBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.statusOverdue.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: AppTheme.statusOverdue, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Validation Failed',
+                                  style: TextStyle(
+                                    color: AppTheme.statusOverdue,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  reading.failureReason!,
+                                  style: const TextStyle(
+                                    color: AppTheme.statusOverdue,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
                 // ── Details card ──────────────────────────────────────
                 _SectionCard(
                   title: 'Reading Info',

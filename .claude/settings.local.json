@@ -112,7 +112,8 @@
       "Bash(python \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\91db51f9-00e8-4bdc-ae78-6df7332d8aea\\\\192e1803-a12d-4f93-9b2c-f460e1d3fdd7\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"D:\\\\Projects\\\\COVER PAGE_TEMPLATE FOR DISSERTATION-.docx\" \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Temp\\\\cover_unpacked\")",
       "Bash(python \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\91db51f9-00e8-4bdc-ae78-6df7332d8aea\\\\192e1803-a12d-4f93-9b2c-f460e1d3fdd7\\\\skills\\\\docx\\\\scripts\\\\office\\\\soffice.py\" --headless --convert-to docx \"D:\\\\Projects\\\\IS_TEMPLATE FOR FINAL YEAR PROJECT REPORT.doc\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('deps:', list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\")",
-      "Bash(python \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\91db51f9-00e8-4bdc-ae78-6df7332d8aea\\\\192e1803-a12d-4f93-9b2c-f460e1d3fdd7\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"D:\\\\Projects\\\\IS_TEMPLATE FOR FINAL YEAR PROJECT REPORT.doc\" \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Temp\\\\template_unpacked\")"
+      "Bash(python \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\91db51f9-00e8-4bdc-ae78-6df7332d8aea\\\\192e1803-a12d-4f93-9b2c-f460e1d3fdd7\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"D:\\\\Projects\\\\IS_TEMPLATE FOR FINAL YEAR PROJECT REPORT.doc\" \"C:\\\\Users\\\\Methuselem\\\\AppData\\\\Temp\\\\template_unpacked\")",
+      "Bash(npx pm2 *)"
     ]
   }
 }

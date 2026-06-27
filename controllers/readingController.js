@@ -66,6 +66,7 @@ exports.getReadingById = async (req, res) => {
                     integer_reading:   readingObj.integerReading ?? null,
                     decimal_reading:   readingObj.decimalReading ?? null,
                     decimal_estimated: true,
+                    failure_reason:    readingObj.failureReason  ?? null,
                 },
                 bill: bill || null
             }
@@ -185,6 +186,7 @@ exports.uploadReading = async (req, res) => {
                         integer_reading:   fullReadingObj.integerReading ?? null,
                         decimal_reading:   fullReadingObj.decimalReading ?? null,
                         decimal_estimated: true,
+                        failure_reason:    fullReadingObj.failureReason  ?? null,
                     }
                 }
             });
@@ -382,6 +384,7 @@ exports.scanReading = async (req, res) => {
                     integer_reading:  obj.integerReading  ?? null,
                     decimal_reading:  obj.decimalReading  ?? null,
                     decimal_estimated: true,
+                    failure_reason:   obj.failureReason   ?? null,
                 }
             }
         });
