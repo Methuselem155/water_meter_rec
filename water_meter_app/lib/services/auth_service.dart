@@ -68,13 +68,19 @@ class AuthService {
 
   // Helper to extract cleanly formatted validation errors returned by express-validator
   String _parseError(dynamic data) {
-    if (data is Map && data.containsKey('errors') && data['errors'] is List) {
-       final errors = List<String>.from(data['errors']);
-       if (errors.isNotEmpty) {
-          return errors.join('\n'); // Stack error messages for SnackBar
-       }
+    if (data is Map) {
+      // express-validator returns errors as a list of strings or objects
+      if (data.containsKey('errors') && data['errors'] is List) {
+        final errors = (data['errors'] as List).map((e) {
+          if (e is String) return e;
+          if (e is Map) return e['msg']?.toString() ?? e.toString();
+          return e.toString();
+        }).where((s) => s.isNotEmpty).toList();
+        if (errors.isNotEmpty) return errors.join('\n');
+      }
+      if (data.containsKey('message')) return data['message'].toString();
     }
-    return data['message'] ?? 'Authentication failed';
+    return 'Authentication failed';
   }
 
   String _parseDioError(DioException e) {

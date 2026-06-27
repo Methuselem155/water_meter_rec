@@ -1,14 +1,16 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 class Constants {
-  // Base URLs - Platform-aware configuration
+  // Local WiFi IP — phone and PC must be on the same network/hotspot
+  // Your current IP: 192.168.43.233
+  // To update: run `ipconfig` on Windows, copy the Wi-Fi IPv4 address
+  static const String _ngrokUrl = 'https://stream-sudoku-armchair.ngrok-free.dev';
+
   static String get baseUrl {
     if (kIsWeb) {
-      // Web builds point to localhost
-      return 'https://stream-sudoku-armchair.ngrok-free.dev/api';
+      return '$_ngrokUrl/api';
     } else {
-      // Mobile: run `npm run patch-url` to auto-update this to the current ngrok URL
-      return 'https://stream-sudoku-armchair.ngrok-free.dev/api';
+      return '$_ngrokUrl/api';
     }
   }
 

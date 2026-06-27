@@ -8,7 +8,8 @@ const port = process.env.PORT || 3000;
 
 const proc = spawn('ngrok', ['http', '--log=stdout', String(port)], {
     stdio: 'inherit',
-    shell: true,   // required on Windows to resolve ngrok from PATH
+    shell: true,        // required on Windows to resolve ngrok from PATH
+    windowsHide: true,  // prevent a new CMD window popping up on Windows
 });
 
 proc.on('exit', (code) => {
